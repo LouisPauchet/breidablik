@@ -9,6 +9,7 @@ from app.auth.routes import router as auth_router
 from app.config import get_settings
 from app.routers.admin import router as admin_router
 from app.routers.duties import router as duties_router
+from app.routers.members import router as members_router
 from app.schemas.user import UserRead, UserUpdate
 
 settings = get_settings()
@@ -20,6 +21,7 @@ app = FastAPI(title="Breidablik")
 app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(duties_router)
+app.include_router(members_router)
 app.include_router(
     fastapi_users.get_users_router(UserRead, UserUpdate),
     prefix="/api/users",
