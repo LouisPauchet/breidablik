@@ -1,10 +1,12 @@
-"""Read-only member directory (id + display name) available to any authenticated member —
-distinct from /api/users, whose per-id operations are superuser-gated by fastapi-users. The
-duty/task/event assignee pickers and the "who's on duty" displays need every member to be
-able to see who else is in the collective.
+"""Read-only member directory (id + display name + birthday) available to any authenticated
+member — distinct from /api/users, whose per-id operations are superuser-gated by
+fastapi-users. The duty/task/event assignee pickers, "who's on duty" displays, and the
+combined calendar's birthday entries all need every member to be able to see this about
+everyone else in the collective.
 """
 
 import uuid
+from datetime import date
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
@@ -21,6 +23,7 @@ router = APIRouter(prefix="/api/members", tags=["members"], dependencies=[Depend
 class MemberOut(BaseModel):
     id: uuid.UUID
     display_name: str
+    birthday: date | None
 
 
 @router.get("", response_model=list[MemberOut])

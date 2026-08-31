@@ -65,6 +65,7 @@ def _serialize_user(user: User) -> dict:
         "is_2fa_enabled": user.is_2fa_enabled,
         "is_superuser": user.is_superuser,
         "calendar_feed_token": user.calendar_feed_token,
+        "birthday": user.birthday.isoformat() if user.birthday else None,
     }
 
 
