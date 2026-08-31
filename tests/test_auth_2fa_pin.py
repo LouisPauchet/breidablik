@@ -106,3 +106,37 @@ async def test_pin_lockout_after_repeated_failures(client, alice):
     locked = await client.post("/api/auth/login/pin", json={"pin": "1234"})
     assert locked.status_code == 423
     assert locked.json()["detail"] == "DEVICE_LOCKED"
+
+
+async def test_device_trust_status_false_when_no_cookie(client, alice):
+    await _login(client)
+    resp = await client.get("/api/auth/device-trust/status")
+    assert resp.status_code == 200
+    assert resp.json() == {"trusted": False}
+
+
+async def test_device_trust_status_true_after_enrollment(client, alice):
+    await _login(client)
+    enroll = await client.post(
+        "/api/auth/device-trust/enroll", json={"pin": "1234", "device_label": "test-device"}
+    )
+    assert enroll.status_code == 200
+
+    status = await client.get("/api/auth/device-trust/status")
+    assert status.json() == {"trusted": True, "device_label": "test-device"}
+
+
+async def test_device_trust_status_false_after_revoke(client, alice):
+    await _login(client)
+    await client.post("/api/auth/device-trust/enroll", json={"pin": "1234"})
+    revoke = await client.post("/api/auth/device-trust/revoke")
+    assert revoke.status_code == 200
+
+    status = await client.get("/api/auth/device-trust/status")
+    assert status.json() == {"trusted": False}
+
+
+async def test_pin_below_minimum_length_rejected(client, alice):
+    await _login(client)
+    resp = await client.post("/api/auth/device-trust/enroll", json={"pin": "12"})
+    assert resp.status_code == 422

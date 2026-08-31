@@ -195,6 +195,24 @@ async def regenerate_calendar_feed_token(
     return _serialize_user(user)
 
 
+@router.get("/device-trust/status")
+async def device_trust_status(
+    request: Request,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """The device_id cookie is httpOnly (unreadable from JS by design), so the frontend
+    can't tell on its own whether *this* device is already trusted — it has to ask.
+    """
+    device_id = request.cookies.get(DEVICE_ID_COOKIE)
+    if not device_id:
+        return {"trusted": False}
+    device = await get_active_device_trust(session, device_id)
+    if device is None or device.user_id != user.id:
+        return {"trusted": False}
+    return {"trusted": True, "device_label": device.device_label}
+
+
 @router.post("/device-trust/enroll")
 async def enroll_device_trust(
     data: DeviceTrustEnrollRequest,

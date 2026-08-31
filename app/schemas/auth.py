@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 
 class LoginRequest(BaseModel):
@@ -19,7 +19,9 @@ class PinLoginRequest(BaseModel):
 
 
 class DeviceTrustEnrollRequest(BaseModel):
-    pin: str
+    # This PIN is a real auth factor — it bypasses password+2FA on a trusted device — so a
+    # 1-2 digit PIN would meaningfully weaken security even with the attempt lockout.
+    pin: str = Field(min_length=4, max_length=16)
     device_label: str | None = None
 
 
