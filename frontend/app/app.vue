@@ -4,6 +4,7 @@
       <NuxtPage />
     </main>
     <BottomNav v-if="authStore.user" />
+    <BirthdayPrompt />
   </div>
 </template>
 

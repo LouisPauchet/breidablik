@@ -3,6 +3,21 @@
     <h1>Profile</h1>
     <p class="muted">{{ authStore.user?.display_name }} &middot; {{ authStore.user?.email }}</p>
 
+    <h2>Birthday</h2>
+    <div class="card">
+      <label>
+        <input v-model="birthdayDraft" type="date" :max="todayIso" />
+      </label>
+      <p v-if="birthdayError" class="error">{{ birthdayError }}</p>
+      <button
+        type="button"
+        :disabled="!birthdayDraft || birthdayDraft === authStore.user?.birthday"
+        @click="onSaveBirthday"
+      >
+        Save
+      </button>
+    </div>
+
     <h2>Security</h2>
     <div class="card">
       <h3>Two-factor authentication</h3>
@@ -151,6 +166,10 @@ const pushError = ref('')
 const notifications = ref<NotificationItem[]>([])
 const copied = ref(false)
 
+const todayIso = new Date().toISOString().slice(0, 10)
+const birthdayDraft = ref(authStore.user?.birthday ?? '')
+const birthdayError = ref('')
+
 const totpStep = ref<'idle' | 'enrolling' | 'recovery-codes'>('idle')
 const totpQrDataUri = ref('')
 const totpSecret = ref('')
@@ -220,6 +239,15 @@ async function onCopyFeedUrl() {
 
 async function onRegenerateFeed() {
   await authStore.regenerateCalendarFeedToken()
+}
+
+async function onSaveBirthday() {
+  birthdayError.value = ''
+  try {
+    await authStore.setBirthday(birthdayDraft.value)
+  } catch {
+    birthdayError.value = 'Could not save that date — try again.'
+  }
 }
 
 async function onStartTotp() {

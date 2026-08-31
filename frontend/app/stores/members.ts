@@ -1,6 +1,7 @@
 export interface Member {
   id: string
   display_name: string
+  birthday: string | null
 }
 
 export const useMembersStore = defineStore('members', {

@@ -14,6 +14,7 @@
             <span v-if="!member.is_active" class="badge inactive">inactive</span>
           </div>
           <div class="muted">{{ member.email }}</div>
+          <div v-if="member.birthday" class="muted">🎂 {{ formatBirthday(member.birthday) }}</div>
         </div>
         <div class="member-actions">
           <button type="button" @click="onToggleActive(member)">
@@ -59,12 +60,17 @@ interface Member {
   is_superuser: boolean
   is_verified: boolean
   is_2fa_enabled: boolean
+  birthday: string | null
 }
 
 const authStore = useAuthStore()
 
 if (!authStore.user?.is_superuser) {
   await navigateTo('/')
+}
+
+function formatBirthday(iso: string) {
+  return new Date(iso).toLocaleDateString(undefined, { month: 'long', day: 'numeric' })
 }
 
 const members = ref<Member[]>([])

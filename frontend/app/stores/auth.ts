@@ -5,6 +5,7 @@ export interface AuthUser {
   is_2fa_enabled: boolean
   is_superuser: boolean
   calendar_feed_token: string
+  birthday: string | null
 }
 
 interface LoginResult {
@@ -53,6 +54,14 @@ export const useAuthStore = defineStore('auth', {
 
     async regenerateCalendarFeedToken() {
       this.user = await $fetch<AuthUser>('/api/auth/calendar-feed/regenerate', { method: 'POST' })
+    },
+
+    async setBirthday(birthday: string) {
+      const updated = await $fetch<{ birthday: string | null }>('/api/users/me', {
+        method: 'PATCH',
+        body: { birthday },
+      })
+      if (this.user) this.user.birthday = updated.birthday
     },
 
     async logout() {

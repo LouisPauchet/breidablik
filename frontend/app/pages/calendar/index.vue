@@ -75,7 +75,7 @@ const upcomingOccurrences = await $fetch<
 interface AgendaEntry {
   key: string
   date: Date
-  kind: 'duty' | 'task' | 'event' | 'away'
+  kind: 'duty' | 'task' | 'event' | 'away' | 'birthday'
   title: string
   detail: string
   whenLabel: string
@@ -92,6 +92,13 @@ windowEnd.setDate(windowEnd.getDate() + 56)
 
 function inWindow(d: Date) {
   return d >= windowStart && d <= windowEnd
+}
+
+function nextBirthdayOccurrence(birthdayIso: string, referenceDate: Date): Date {
+  const birth = new Date(birthdayIso)
+  const candidate = new Date(referenceDate.getFullYear(), birth.getMonth(), birth.getDate())
+  if (candidate < referenceDate) candidate.setFullYear(candidate.getFullYear() + 1)
+  return candidate
 }
 
 function formatDate(iso: string) {
@@ -165,6 +172,20 @@ const agenda = computed<AgendaEntry[]>(() => {
       title: `${members.nameOf(absence.user_id)} away`,
       detail: absence.reason ?? '',
       whenLabel: `${formatDate(absence.start_date)} - ${formatDate(absence.end_date)}`,
+    })
+  }
+
+  for (const member of members.members) {
+    if (!member.birthday) continue
+    const next = nextBirthdayOccurrence(member.birthday, today)
+    if (!inWindow(next)) continue
+    entries.push({
+      key: `birthday-${member.id}-${next.getFullYear()}`,
+      date: next,
+      kind: 'birthday',
+      title: `${member.display_name}'s birthday`,
+      detail: '',
+      whenLabel: next.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
     })
   }
 
@@ -264,6 +285,10 @@ async function onDeleteAbsence(id: string) {
 
 .kind-badge.away {
   background: #d97706;
+}
+
+.kind-badge.birthday {
+  background: #db2777;
 }
 
 .agenda-body {
