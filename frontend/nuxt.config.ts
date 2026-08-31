@@ -22,6 +22,24 @@ export default defineNuxtConfig({
     },
   },
 
+  app: {
+    head: {
+      htmlAttrs: { lang: 'en' },
+      title: 'Breidablik',
+      link: [
+        // iOS Safari doesn't fully honor the web manifest — these are the separate,
+        // Apple-specific tags it actually reads for home-screen install styling.
+        { rel: 'apple-touch-icon', href: '/icons/apple-touch-icon.png' },
+      ],
+      meta: [
+        { name: 'description', content: 'Household collective manager: duties, tasks, events, shopping lists.' },
+        { name: 'apple-mobile-web-app-capable', content: 'yes' },
+        { name: 'apple-mobile-web-app-status-bar-style', content: 'default' },
+        { name: 'theme-color', content: '#0f766e' },
+      ],
+    },
+  },
+
   pwa: {
     strategies: 'injectManifest',
     srcDir: 'service-worker',
@@ -33,7 +51,7 @@ export default defineNuxtConfig({
       name: 'Breidablik',
       short_name: 'Breidablik',
       description: 'Household collective manager: duties, tasks, events, shopping lists.',
-      theme_color: '#0f172a',
+      theme_color: '#0f766e',
       background_color: '#ffffff',
       display: 'standalone',
       start_url: '/',
