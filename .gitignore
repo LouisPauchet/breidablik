@@ -32,3 +32,5 @@ app/alembic/versions/__pycache__/
 # Misc
 *.log
 .cache/
+*.sqlite3
+/*.db

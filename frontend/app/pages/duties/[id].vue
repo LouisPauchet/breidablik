@@ -9,11 +9,18 @@
 
     <div class="info-card">
       <div>Needs doing every <strong>{{ duty.task_interval_days }}</strong> day(s)</div>
-      <div>Responsibility rotates every <strong>{{ duty.rotation_interval_days }}</strong> day(s)</div>
-      <div>
-        Rotation order:
-        <strong>{{ duty.assignees.map((a) => members.nameOf(a.user_id)).join(' -> ') }}</strong>
-      </div>
+      <template v-if="duty.team_id">
+        <div>
+          Part of team: <NuxtLink :to="`/duties/teams/${duty.team_id}`">{{ teams.nameOf(duty.team_id) }}</NuxtLink>
+        </div>
+      </template>
+      <template v-else>
+        <div>Responsibility rotates every <strong>{{ duty.rotation_interval_days }}</strong> day(s)</div>
+        <div>
+          Rotation order:
+          <strong>{{ duty.assignees.map((a) => members.nameOf(a.user_id)).join(' -> ') }}</strong>
+        </div>
+      </template>
       <div>
         Currently on duty: <strong>{{ members.nameOf(duty.current_period.assignee_user_id) }}</strong>
         (until {{ formatDate(duty.current_period.end_date) }})
@@ -49,9 +56,9 @@ const route = useRoute()
 const router = useRouter()
 const duties = useDutiesStore()
 const members = useMembersStore()
+const teams = useDutyTeamsStore()
 
-await members.ensureLoaded()
-await duties.fetchDuty(route.params.id as string)
+await Promise.all([members.ensureLoaded(), teams.fetchTeams(), duties.fetchDuty(route.params.id as string)])
 
 const duty = computed(() => duties.current)
 
@@ -105,6 +112,10 @@ async function onDelete() {
   gap: 0.4rem;
   font-size: 0.9rem;
   margin: 1rem 0;
+}
+
+.info-card a {
+  color: var(--link);
 }
 
 .occurrence-list {

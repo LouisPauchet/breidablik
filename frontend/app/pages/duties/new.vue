@@ -26,44 +26,70 @@
         </div>
       </fieldset>
 
-      <fieldset>
-        <legend>How often does the responsible person change?</legend>
-        <div class="interval-row">
-          <input v-model.number="rotationValue" type="number" min="1" required />
-          <select v-model="rotationUnit">
-            <option value="days">days</option>
-            <option value="weeks">weeks</option>
-          </select>
-        </div>
+      <fieldset class="mode-fieldset">
+        <legend>Rotation</legend>
+        <label class="radio-row">
+          <input v-model="mode" type="radio" value="manual" />
+          Set up my own rotation
+        </label>
+        <label class="radio-row">
+          <input v-model="mode" type="radio" value="team" :disabled="!teams.teams.length" />
+          Use a duty team
+          <span v-if="!teams.teams.length" class="muted small">
+            (<NuxtLink to="/duties/teams/new">create one first</NuxtLink>)
+          </span>
+        </label>
       </fieldset>
 
-      <fieldset>
-        <legend>Who's in the rotation? (tap to add, in order)</legend>
-        <div class="member-picker">
-          <button
-            v-for="m in members.members"
-            :key="m.id"
-            type="button"
-            class="member-chip"
-            :class="{ selected: selectedIds.includes(m.id) }"
-            @click="toggleMember(m.id)"
-          >
-            {{ m.display_name }}
-          </button>
-        </div>
-        <ol v-if="selectedIds.length" class="order-list">
-          <li v-for="(id, i) in selectedIds" :key="id">
-            <span>{{ members.nameOf(id) }}</span>
-            <span class="order-actions">
-              <button type="button" :disabled="i === 0" @click="moveUp(i)">↑</button>
-              <button type="button" :disabled="i === selectedIds.length - 1" @click="moveDown(i)">↓</button>
-            </span>
-          </li>
-        </ol>
-      </fieldset>
+      <template v-if="mode === 'team'">
+        <label>
+          Team
+          <select v-model="teamId">
+            <option v-for="t in teams.teams" :key="t.id" :value="t.id">{{ t.name }}</option>
+          </select>
+        </label>
+      </template>
+
+      <template v-else>
+        <fieldset>
+          <legend>How often does the responsible person change?</legend>
+          <div class="interval-row">
+            <input v-model.number="rotationValue" type="number" min="1" required />
+            <select v-model="rotationUnit">
+              <option value="days">days</option>
+              <option value="weeks">weeks</option>
+            </select>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Who's in the rotation? (tap to add, in order)</legend>
+          <div class="member-picker">
+            <button
+              v-for="m in members.members"
+              :key="m.id"
+              type="button"
+              class="member-chip"
+              :class="{ selected: selectedIds.includes(m.id) }"
+              @click="toggleMember(m.id)"
+            >
+              {{ m.display_name }}
+            </button>
+          </div>
+          <ol v-if="selectedIds.length" class="order-list">
+            <li v-for="(id, i) in selectedIds" :key="id">
+              <span>{{ members.nameOf(id) }}</span>
+              <span class="order-actions">
+                <button type="button" :disabled="i === 0" @click="moveUp(i)">↑</button>
+                <button type="button" :disabled="i === selectedIds.length - 1" @click="moveDown(i)">↓</button>
+              </span>
+            </li>
+          </ol>
+        </fieldset>
+      </template>
 
       <p v-if="error" class="error">{{ error }}</p>
-      <button type="submit" class="submit-btn" :disabled="loading || !selectedIds.length">
+      <button type="submit" class="submit-btn" :disabled="loading || !canSubmit">
         Create duty
       </button>
     </form>
@@ -73,9 +99,13 @@
 <script setup lang="ts">
 const members = useMembersStore()
 const duties = useDutiesStore()
+const teams = useDutyTeamsStore()
 const router = useRouter()
+const route = useRoute()
 
-await members.ensureLoaded()
+await Promise.all([members.ensureLoaded(), teams.fetchTeams()])
+
+const queryTeamId = typeof route.query.team_id === 'string' ? route.query.team_id : null
 
 const title = ref('')
 const description = ref('')
@@ -87,6 +117,11 @@ const rotationUnit = ref<'days' | 'weeks'>('weeks')
 const selectedIds = ref<string[]>([])
 const loading = ref(false)
 const error = ref('')
+
+const mode = ref<'manual' | 'team'>(queryTeamId ? 'team' : 'manual')
+const teamId = ref(queryTeamId ?? teams.teams[0]?.id ?? '')
+
+const canSubmit = computed(() => (mode.value === 'team' ? !!teamId.value : selectedIds.value.length > 0))
 
 function toggleMember(id: string) {
   const idx = selectedIds.value.indexOf(id)
@@ -114,14 +149,24 @@ async function submit() {
   error.value = ''
   loading.value = true
   try {
-    const duty = await duties.createDuty({
-      title: title.value,
-      description: description.value || null,
-      start_date: startDate.value,
-      task_interval_days: toDays(taskValue.value, taskUnit.value),
-      rotation_interval_days: toDays(rotationValue.value, rotationUnit.value),
-      assignee_user_ids: selectedIds.value,
-    })
+    const duty = await duties.createDuty(
+      mode.value === 'team'
+        ? {
+            title: title.value,
+            description: description.value || null,
+            start_date: startDate.value,
+            task_interval_days: toDays(taskValue.value, taskUnit.value),
+            team_id: teamId.value,
+          }
+        : {
+            title: title.value,
+            description: description.value || null,
+            start_date: startDate.value,
+            task_interval_days: toDays(taskValue.value, taskUnit.value),
+            rotation_interval_days: toDays(rotationValue.value, rotationUnit.value),
+            assignee_user_ids: selectedIds.value,
+          }
+    )
     await router.push(`/duties/${duty.id}`)
   } catch {
     error.value = 'Could not create the duty. Check the fields and try again.'
@@ -170,6 +215,26 @@ legend {
   font-size: 0.85rem;
   color: var(--muted);
   padding: 0 0.3rem;
+}
+
+.mode-fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.radio-row {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 0.4rem !important;
+}
+
+.radio-row input {
+  width: auto;
+}
+
+.small {
+  font-size: 0.8rem;
 }
 
 .interval-row {

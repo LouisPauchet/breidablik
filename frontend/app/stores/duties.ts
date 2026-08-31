@@ -16,7 +16,8 @@ export interface Duty {
   description: string | null
   start_date: string
   task_interval_days: number
-  rotation_interval_days: number
+  rotation_interval_days: number | null
+  team_id: string | null
   is_active: boolean
   created_by_id: string
   created_at: string
@@ -61,8 +62,9 @@ export interface DutyCreatePayload {
   description?: string | null
   start_date: string
   task_interval_days: number
-  rotation_interval_days: number
-  assignee_user_ids: string[]
+  team_id?: string | null
+  rotation_interval_days?: number | null
+  assignee_user_ids?: string[]
 }
 
 export const useDutiesStore = defineStore('duties', {

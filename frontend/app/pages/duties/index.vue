@@ -4,13 +4,17 @@
       <h1>Duties</h1>
       <NuxtLink to="/duties/new" class="btn-primary">+ New</NuxtLink>
     </header>
+    <NuxtLink to="/duties/teams" class="teams-link">Manage duty teams &rarr;</NuxtLink>
 
     <p v-if="!duties.duties.length" class="muted">No duties yet. Create the first one.</p>
 
     <ul class="duty-list">
       <li v-for="duty in duties.duties" :key="duty.id">
         <NuxtLink :to="`/duties/${duty.id}`" class="duty-card">
-          <div class="duty-title">{{ duty.title }}</div>
+          <div class="duty-title">
+            {{ duty.title }}
+            <span v-if="duty.team_id" class="badge">{{ teams.nameOf(duty.team_id) }}</span>
+          </div>
           <div class="duty-meta">
             On duty: <strong>{{ members.nameOf(duty.current_period.assignee_user_id) }}</strong>
             until {{ formatDate(duty.current_period.end_date) }}
@@ -24,8 +28,9 @@
 <script setup lang="ts">
 const duties = useDutiesStore()
 const members = useMembersStore()
+const teams = useDutyTeamsStore()
 
-await Promise.all([members.ensureLoaded(), duties.fetchDuties()])
+await Promise.all([members.ensureLoaded(), duties.fetchDuties(), teams.fetchTeams()])
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
@@ -37,6 +42,14 @@ function formatDate(iso: string) {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.teams-link {
+  display: inline-block;
+  color: var(--link);
+  text-decoration: none;
+  font-size: 0.85rem;
   margin-bottom: 1rem;
 }
 
@@ -74,6 +87,18 @@ function formatDate(iso: string) {
 .duty-title {
   font-weight: 600;
   margin-bottom: 0.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.badge {
+  font-size: 0.7rem;
+  font-weight: 400;
+  background: #0f766e;
+  color: white;
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
 }
 
 .duty-meta {
