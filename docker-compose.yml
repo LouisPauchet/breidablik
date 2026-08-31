@@ -21,6 +21,11 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql+asyncpg://breidablik:breidablik@db:5432/breidablik
+      # Docker only: safe to keep an in-process reminder scheduler alive here since this is a
+      # genuinely long-running process. Passenger deployments have no docker-compose.yml at
+      # all, so this default simply doesn't apply there — they use POST /internal/cron/tick
+      # via the shared host's own cron instead.
+      ENABLE_INTERNAL_SCHEDULER: "true"
     ports:
       - "8000:8000"
     depends_on:
