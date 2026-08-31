@@ -1,9 +1,6 @@
 <template>
   <div v-if="authStore.user?.is_superuser">
-    <header class="page-header">
-      <h1>Members</h1>
-      <NuxtLink to="/profile" class="back-link">&larr; Profile</NuxtLink>
-    </header>
+    <PageHeader title="Members" back="/profile" />
 
     <ul class="member-list">
       <li v-for="member in members" :key="member.id" class="member-row">
@@ -126,18 +123,6 @@ async function onToggleSuperuser(member: Member) {
 </script>
 
 <style scoped>
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-}
-
-.back-link {
-  color: var(--link);
-  text-decoration: none;
-  font-size: 0.85rem;
-}
-
 .muted {
   color: var(--muted);
 }

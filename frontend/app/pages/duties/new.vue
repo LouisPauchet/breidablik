@@ -1,6 +1,6 @@
 <template>
   <div>
-    <h1>New duty</h1>
+    <PageHeader title="New duty" back="/duties" />
     <form class="card" @submit.prevent="submit">
       <label>
         Title

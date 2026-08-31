@@ -1,9 +1,6 @@
 <template>
   <div v-if="list">
-    <header class="page-header">
-      <h1>{{ list.name }}</h1>
-      <NuxtLink to="/shopping" class="back-link">&larr; Shopping</NuxtLink>
-    </header>
+    <PageHeader :title="list.name" back="/shopping" />
 
     <p v-if="list.duty_id" class="muted">
       Adding an item notifies whoever's on <strong>{{ duties.titleOf(list.duty_id) }}</strong> duty.
@@ -81,18 +78,6 @@ async function onDeleteList() {
 </script>
 
 <style scoped>
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-}
-
-.back-link {
-  color: var(--link);
-  text-decoration: none;
-  font-size: 0.85rem;
-}
-
 .muted {
   color: var(--muted);
 }

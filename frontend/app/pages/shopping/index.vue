@@ -1,6 +1,6 @@
 <template>
   <div>
-    <h1>Shopping</h1>
+    <PageHeader title="Shopping" />
 
     <p v-if="!shopping.lists.length" class="muted">No lists yet.</p>
     <ul class="list-cards">

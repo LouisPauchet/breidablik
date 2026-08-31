@@ -1,9 +1,6 @@
 <template>
   <div v-if="duty">
-    <header class="page-header">
-      <h1>{{ duty.title }}</h1>
-      <NuxtLink to="/duties" class="back-link">&larr; Duties</NuxtLink>
-    </header>
+    <PageHeader :title="duty.title" back="/duties" />
 
     <p v-if="duty.description" class="muted">{{ duty.description }}</p>
 
@@ -87,18 +84,6 @@ async function onDelete() {
 </script>
 
 <style scoped>
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-}
-
-.back-link {
-  color: var(--link);
-  text-decoration: none;
-  font-size: 0.85rem;
-}
-
 .muted {
   color: var(--muted);
 }

@@ -1,10 +1,8 @@
 <template>
   <div>
-    <header class="page-header">
-      <h1>Duty teams</h1>
+    <PageHeader title="Duty teams" back="/duties">
       <NuxtLink to="/duties/teams/new" class="btn-primary">+ New</NuxtLink>
-    </header>
-    <NuxtLink to="/duties" class="back-link">&larr; Duties</NuxtLink>
+    </PageHeader>
 
     <p v-if="!teams.teams.length" class="muted">No teams yet.</p>
     <ul class="team-list">
@@ -27,21 +25,6 @@ await teams.fetchTeams()
 </script>
 
 <style scoped>
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.5rem;
-}
-
-.back-link {
-  display: inline-block;
-  color: var(--link);
-  text-decoration: none;
-  font-size: 0.85rem;
-  margin-bottom: 1rem;
-}
-
 .btn-primary {
   background: var(--accent);
   color: white;

@@ -1,6 +1,6 @@
 <template>
   <div>
-    <h1>Profile</h1>
+    <PageHeader title="Profile" />
     <p class="muted">{{ authStore.user?.display_name }} &middot; {{ authStore.user?.email }}</p>
 
     <h2>Birthday</h2>

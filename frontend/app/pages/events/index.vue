@@ -1,9 +1,8 @@
 <template>
   <div>
-    <header class="page-header">
-      <h1>Events</h1>
+    <PageHeader title="Events" back="/calendar">
       <NuxtLink to="/events/new" class="btn-primary">+ New</NuxtLink>
-    </header>
+    </PageHeader>
 
     <p v-if="!events.events.length" class="muted">No events yet.</p>
     <ul class="event-list">
@@ -38,13 +37,6 @@ function formatDateTime(iso: string) {
 </script>
 
 <style scoped>
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1rem;
-}
-
 .btn-primary {
   background: var(--accent);
   color: white;

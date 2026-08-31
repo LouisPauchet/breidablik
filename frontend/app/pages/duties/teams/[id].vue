@@ -1,9 +1,6 @@
 <template>
   <div v-if="team">
-    <header class="page-header">
-      <h1>{{ team.name }}</h1>
-      <NuxtLink to="/duties/teams" class="back-link">&larr; Teams</NuxtLink>
-    </header>
+    <PageHeader :title="team.name" back="/duties/teams" />
     <p v-if="team.description" class="muted">{{ team.description }}</p>
 
     <div class="info-card">
@@ -103,18 +100,6 @@ async function onDelete() {
 </script>
 
 <style scoped>
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-}
-
-.back-link {
-  color: var(--link);
-  text-decoration: none;
-  font-size: 0.85rem;
-}
-
 .muted {
   color: var(--muted);
 }

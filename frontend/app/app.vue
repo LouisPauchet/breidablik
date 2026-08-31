@@ -43,6 +43,7 @@ const authStore = useAuthStore()
 
 * {
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
 }
 
 html,
@@ -61,6 +62,7 @@ body {
     'Segoe UI',
     Roboto,
     sans-serif;
+  overscroll-behavior-y: none;
 }
 
 .app-shell {
@@ -72,9 +74,46 @@ body {
 .app-content {
   flex: 1;
   padding: 1rem;
+  padding-top: calc(1rem + env(safe-area-inset-top));
   padding-bottom: calc(4.5rem + env(safe-area-inset-bottom));
   max-width: 640px;
   margin: 0 auto;
   width: 100%;
+}
+
+/* Native-style press feedback: buttons/links dim briefly on tap instead of
+   showing the desktop-oriented default (outline, browser tap-highlight). */
+button,
+.nav-item,
+a {
+  touch-action: manipulation;
+}
+
+button:active,
+a.btn-primary:active,
+.card button:active {
+  opacity: 0.65;
+}
+
+button {
+  font-family: inherit;
+}
+
+/* Subtle cross-fade between routes so tab switches feel like a native
+   view transition rather than an instant content swap. */
+.page-enter-active,
+.page-leave-active {
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
+}
+
+.page-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.page-leave-to {
+  opacity: 0;
 }
 </style>

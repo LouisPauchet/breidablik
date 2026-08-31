@@ -1,9 +1,8 @@
 <template>
   <div>
-    <header class="page-header">
-      <h1>Duties</h1>
+    <PageHeader title="Duties">
       <NuxtLink to="/duties/new" class="btn-primary">+ New</NuxtLink>
-    </header>
+    </PageHeader>
     <NuxtLink to="/duties/teams" class="teams-link">Manage duty teams &rarr;</NuxtLink>
 
     <p v-if="!duties.duties.length" class="muted">No duties yet. Create the first one.</p>
@@ -38,13 +37,6 @@ function formatDate(iso: string) {
 </script>
 
 <style scoped>
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.5rem;
-}
-
 .teams-link {
   display: inline-block;
   color: var(--link);

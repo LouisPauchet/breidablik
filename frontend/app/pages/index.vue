@@ -1,6 +1,6 @@
 <template>
   <div>
-    <h1>Hi {{ authStore.user?.display_name }}</h1>
+    <PageHeader :title="`Hi ${authStore.user?.display_name}`" />
 
     <h2>On duty today</h2>
     <p v-if="!duties.onDutyToday.length" class="muted">No active duties yet.</p>

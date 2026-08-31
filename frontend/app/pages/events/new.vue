@@ -1,6 +1,6 @@
 <template>
   <div>
-    <h1>New event</h1>
+    <PageHeader title="New event" back="/events" />
     <form class="card" @submit.prevent="submit">
       <label>
         Title

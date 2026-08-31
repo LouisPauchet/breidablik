@@ -1,9 +1,6 @@
 <template>
   <div v-if="event">
-    <header class="page-header">
-      <h1>{{ event.title }}</h1>
-      <NuxtLink to="/events" class="back-link">&larr; Events</NuxtLink>
-    </header>
+    <PageHeader :title="event.title" back="/events" />
 
     <div class="info-card">
       <div><span class="type-badge">{{ event.event_type }}</span></div>
@@ -88,18 +85,6 @@ async function onDelete() {
 </script>
 
 <style scoped>
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-}
-
-.back-link {
-  color: var(--link);
-  text-decoration: none;
-  font-size: 0.85rem;
-}
-
 .info-card {
   border: 1px solid var(--border);
   border-radius: 0.75rem;

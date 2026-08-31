@@ -1,6 +1,6 @@
 <template>
   <div>
-    <h1>Tasks</h1>
+    <PageHeader title="Tasks" />
 
     <p v-if="!tasks.tasks.length" class="muted">No tasks yet.</p>
     <ul class="task-list">

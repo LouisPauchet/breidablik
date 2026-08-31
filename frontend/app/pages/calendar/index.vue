@@ -1,9 +1,8 @@
 <template>
   <div>
-    <header class="page-header">
-      <h1>Calendar</h1>
+    <PageHeader title="Calendar">
       <NuxtLink to="/events/new" class="btn-primary">+ New event</NuxtLink>
-    </header>
+    </PageHeader>
 
     <p v-if="!agenda.length" class="muted">Nothing coming up in the next 8 weeks.</p>
     <ul class="agenda-list">
@@ -221,13 +220,6 @@ async function onDeleteAbsence(id: string) {
 </script>
 
 <style scoped>
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1rem;
-}
-
 .btn-primary {
   background: var(--accent);
   color: white;
