@@ -223,9 +223,17 @@ async def update_duty(
         await session.flush()
         for index, user_id in enumerate(data.assignee_user_ids):
             session.add(DutyAssignee(duty_id=duty_id, user_id=user_id, order_index=index))
+        await session.commit()
+        # `duty` was loaded (with assignees) at the top of this request and is still the
+        # same object the session's identity map will hand back on any further query in
+        # this session — a raw bulk delete()/add() doesn't refresh an already-loaded
+        # relationship collection on its own, so re-querying here would silently return
+        # the pre-update assignee list instead of the one just written.
+        await session.refresh(duty, attribute_names=["assignees"])
+    else:
+        await session.commit()
 
-    await session.commit()
-    return _build_duty_out(await _load_duty_or_404(session, duty_id))
+    return _build_duty_out(duty)
 
 
 @router.delete("/{duty_id}", status_code=204)

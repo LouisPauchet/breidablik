@@ -204,3 +204,25 @@ async def test_on_duty_today_widget(client, alice, test_engine):
     assert len(body) == 1
     assert body[0]["duty_title"] == "Bathroom"
     assert body[0]["assignee_user_id"] == str(alice.id)
+
+
+async def test_update_duty_reassigns_assignees(client, alice, test_engine):
+    bob = await _create_user(test_engine, "bob@example.com", "Bob")
+    await _login(client, "alice@example.com")
+    create_resp = await client.post(
+        "/api/duties",
+        json={
+            "title": "Bathroom",
+            "start_date": date.today().isoformat(),
+            "task_interval_days": 7,
+            "rotation_interval_days": 7,
+            "assignee_user_ids": [str(alice.id)],
+        },
+    )
+    duty_id = create_resp.json()["id"]
+
+    updated = await client.patch(
+        f"/api/duties/{duty_id}", json={"assignee_user_ids": [str(bob.id)]}
+    )
+    assert updated.status_code == 200
+    assert [a["user_id"] for a in updated.json()["assignees"]] == [str(bob.id)]
