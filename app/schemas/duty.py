@@ -98,3 +98,11 @@ class OnDutyTodayOut(BaseModel):
     duty_id: uuid.UUID
     duty_title: str
     assignee_user_id: uuid.UUID
+
+
+class UpcomingOccurrenceOut(BaseModel):
+    duty_id: uuid.UUID
+    duty_title: str
+    due_date: date
+    assigned_user_id: uuid.UUID
+    is_done: bool

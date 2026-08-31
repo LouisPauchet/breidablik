@@ -226,3 +226,48 @@ async def test_update_duty_reassigns_assignees(client, alice, test_engine):
     )
     assert updated.status_code == 200
     assert [a["user_id"] for a in updated.json()["assignees"]] == [str(bob.id)]
+
+
+async def test_upcoming_occurrences_across_duties(client, alice, test_engine):
+    bob = await _create_user(test_engine, "bob@example.com", "Bob")
+    await _login(client, "alice@example.com")
+
+    start = date.today()
+    await client.post(
+        "/api/duties",
+        json={
+            "title": "Bathroom",
+            "start_date": start.isoformat(),
+            "task_interval_days": 7,
+            "rotation_interval_days": 7,
+            "assignee_user_ids": [str(alice.id)],
+        },
+    )
+    await client.post(
+        "/api/duties",
+        json={
+            "title": "Kitchen",
+            "start_date": start.isoformat(),
+            "task_interval_days": 14,
+            "rotation_interval_days": 14,
+            "assignee_user_ids": [str(bob.id)],
+        },
+    )
+
+    resp = await client.get("/api/duties/occurrences/upcoming")
+    assert resp.status_code == 200
+    body = resp.json()
+    titles = {entry["duty_title"] for entry in body}
+    assert titles == {"Bathroom", "Kitchen"}
+    # Bathroom (7-day task interval) contributes more occurrences than Kitchen (14-day) over
+    # the same horizon.
+    bathroom_count = sum(1 for e in body if e["duty_title"] == "Bathroom")
+    kitchen_count = sum(1 for e in body if e["duty_title"] == "Kitchen")
+    assert bathroom_count > kitchen_count
+
+
+async def test_upcoming_occurrences_empty_when_no_duties(client, alice):
+    await _login(client, "alice@example.com")
+    resp = await client.get("/api/duties/occurrences/upcoming")
+    assert resp.status_code == 200
+    assert resp.json() == []

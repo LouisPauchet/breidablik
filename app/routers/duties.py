@@ -21,6 +21,7 @@ from app.schemas.duty import (
     DutyUpdate,
     OccurrenceReassignIn,
     OnDutyTodayOut,
+    UpcomingOccurrenceOut,
 )
 from app.services.absences import is_user_away, load_active_absences_by_user
 from app.services.occurrences import DEFAULT_HORIZON_DAYS, ensure_occurrences_materialized
@@ -136,6 +137,43 @@ async def on_duty_today(session: AsyncSession = Depends(get_session)):
         assignee_id = resolve_assignee_for_period(ordered, overrides_by_period, period_index)
         out.append(OnDutyTodayOut(duty_id=duty.id, duty_title=duty.title, assignee_user_id=assignee_id))
     return out
+
+
+@router.get("/occurrences/upcoming", response_model=list[UpcomingOccurrenceOut])
+async def upcoming_occurrences(session: AsyncSession = Depends(get_session)):
+    """Flat, cross-duty feed for the combined calendar view — materializes every active
+    duty's occurrences up to the same rolling horizon the per-duty detail view uses.
+    """
+    result = await session.execute(
+        select(Duty)
+        .options(selectinload(Duty.assignees), selectinload(Duty.overrides))
+        .where(Duty.is_active.is_(True))
+    )
+    duties = result.scalars().unique().all()
+
+    horizon = today() + timedelta(days=DEFAULT_HORIZON_DAYS)
+    for duty in duties:
+        await ensure_occurrences_materialized(session, duty, horizon)
+
+    duty_by_id = {d.id: d for d in duties}
+    if not duty_by_id:
+        return []
+
+    occ_result = await session.execute(
+        select(DutyOccurrence)
+        .where(DutyOccurrence.duty_id.in_(duty_by_id.keys()))
+        .order_by(DutyOccurrence.due_date)
+    )
+    return [
+        UpcomingOccurrenceOut(
+            duty_id=o.duty_id,
+            duty_title=duty_by_id[o.duty_id].title,
+            due_date=o.due_date,
+            assigned_user_id=o.assigned_user_id,
+            is_done=o.is_done,
+        )
+        for o in occ_result.scalars()
+    ]
 
 
 @router.post("", response_model=DutyOut, status_code=201)
