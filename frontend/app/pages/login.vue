@@ -145,7 +145,7 @@ button {
 
 button.link {
   background: none;
-  color: var(--accent);
+  color: var(--link);
   padding: 0.25rem;
 }
 

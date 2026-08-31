@@ -20,6 +20,10 @@ const authStore = useAuthStore()
   --fg: #0f172a;
   --muted: #64748b;
   --accent: #0f766e;
+  /* Text/links use --link, not --accent, so dark mode can lighten just this one — --accent
+     itself stays a fixed teal because it's also used as a filled-button background with
+     white text, which needs it to stay dark enough regardless of page theme. */
+  --link: #0f766e;
   --border: #e2e8f0;
 }
 
@@ -29,6 +33,10 @@ const authStore = useAuthStore()
     --fg: #f1f5f9;
     --muted: #94a3b8;
     --border: #1e293b;
+    /* #0f766e text on this dark background fails WCAG AA contrast (3.26:1, needs 4.5:1) —
+       caught by a Lighthouse audit. A lighter teal keeps the same brand hue at a contrast
+       that actually passes. */
+    --link: #5eead4;
   }
 }
 

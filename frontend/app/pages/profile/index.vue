@@ -413,7 +413,7 @@ async function onForgetDevice() {
 .link-btn {
   background: none;
   border: none;
-  color: var(--accent);
+  color: var(--link);
   padding: 0;
   font-size: 0.8rem;
   display: block;
@@ -498,7 +498,7 @@ async function onForgetDevice() {
 
 .admin-link {
   display: block;
-  color: var(--accent);
+  color: var(--link);
   text-decoration: none;
   margin-top: 1rem;
   font-size: 0.9rem;

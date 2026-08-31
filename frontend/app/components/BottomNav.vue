@@ -43,7 +43,7 @@ const items = [
 }
 
 .nav-item.active {
-  color: var(--accent);
+  color: var(--link);
   font-weight: 600;
 }
 </style>

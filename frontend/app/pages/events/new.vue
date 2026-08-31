@@ -152,7 +152,7 @@ legend {
 .link-btn {
   background: none;
   border: none;
-  color: var(--accent);
+  color: var(--link);
   padding: 0;
   text-align: left;
   font-size: 0.85rem;

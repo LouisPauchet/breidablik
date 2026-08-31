@@ -127,7 +127,7 @@ async function onToggleSuperuser(member: Member) {
 }
 
 .back-link {
-  color: var(--accent);
+  color: var(--link);
   text-decoration: none;
   font-size: 0.85rem;
 }
