@@ -71,6 +71,9 @@ export const useDutiesStore = defineStore('duties', {
     onDutyToday: [] as OnDutyToday[],
     current: null as DutyDetail | null,
   }),
+  getters: {
+    titleOf: (state) => (dutyId: string) => state.duties.find((d) => d.id === dutyId)?.title ?? 'Unknown duty',
+  },
   actions: {
     async fetchDuties() {
       this.duties = await $fetch<Duty[]>('/api/duties')
