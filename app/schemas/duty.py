@@ -45,6 +45,9 @@ class DutyOccurrenceOut(BaseModel):
     is_done: bool
     done_by_id: uuid.UUID | None
     done_at: datetime | None
+    # Not an ORM column — every route builds this from the Absence table (see
+    # app/routers/duties.py:_build_occurrence_out), never from raw attribute access.
+    assignee_away: bool
 
 
 class DutyOverrideOut(BaseModel):

@@ -31,6 +31,9 @@
           <option v-for="m in members.members" :key="m.id" :value="m.id">{{ m.display_name }}</option>
         </select>
         <span v-if="occ.is_manual_override" class="badge">swapped</span>
+        <span v-if="occ.assignee_away" class="badge away" title="Assigned person marked themselves away for this date">
+          away — reassign?
+        </span>
       </li>
     </ul>
 
@@ -149,6 +152,11 @@ select {
   color: white;
   padding: 0.15rem 0.45rem;
   border-radius: 999px;
+  white-space: nowrap;
+}
+
+.badge.away {
+  background: #d97706;
 }
 
 .danger-zone {

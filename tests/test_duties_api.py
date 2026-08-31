@@ -155,6 +155,36 @@ async def test_toggle_occurrence_done(client, alice, test_engine):
     assert toggled_back.json()["done_by_id"] is None
 
 
+async def test_occurrence_flags_assignee_away(client, alice, test_engine):
+    bob = await _create_user(test_engine, "bob@example.com", "Bob")
+    await _login(client, "alice@example.com")
+
+    start = date.today()
+    create_resp = await client.post(
+        "/api/duties",
+        json={
+            "title": "Bathroom",
+            "start_date": start.isoformat(),
+            "task_interval_days": 7,
+            "rotation_interval_days": 7,
+            "assignee_user_ids": [str(alice.id), str(bob.id)],
+        },
+    )
+    duty_id = create_resp.json()["id"]
+
+    # Alice is on duty today (period 0); mark her away for that window.
+    away_start = start.isoformat()
+    away_end = (start + timedelta(days=3)).isoformat()
+    await client.post("/api/absences", json={"start_date": away_start, "end_date": away_end})
+
+    detail = await client.get(f"/api/duties/{duty_id}")
+    occurrences = detail.json()["occurrences"]
+    assert occurrences[0]["assigned_user_id"] == str(alice.id)
+    assert occurrences[0]["assignee_away"] is True
+    # Bob's occurrence (period 1, a week later) is unaffected.
+    assert occurrences[1]["assignee_away"] is False
+
+
 async def test_on_duty_today_widget(client, alice, test_engine):
     bob = await _create_user(test_engine, "bob@example.com", "Bob")
     await _login(client, "alice@example.com")

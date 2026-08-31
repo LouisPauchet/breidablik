@@ -22,6 +22,7 @@ from app.schemas.duty import (
     OccurrenceReassignIn,
     OnDutyTodayOut,
 )
+from app.services.absences import is_user_away, load_active_absences_by_user
 from app.services.occurrences import DEFAULT_HORIZON_DAYS, ensure_occurrences_materialized
 from app.services.rotation import (
     compute_period_index,
@@ -87,6 +88,21 @@ async def _load_occurrence_or_404(
     if occurrence is None:
         raise HTTPException(status_code=404, detail="OCCURRENCE_NOT_FOUND")
     return occurrence
+
+
+async def _build_occurrence_out(session: AsyncSession, occurrence: DutyOccurrence) -> DutyOccurrenceOut:
+    absences_by_user = await load_active_absences_by_user(session, [occurrence.assigned_user_id])
+    return DutyOccurrenceOut(
+        id=occurrence.id,
+        due_date=occurrence.due_date,
+        period_index=occurrence.period_index,
+        assigned_user_id=occurrence.assigned_user_id,
+        is_manual_override=occurrence.is_manual_override,
+        is_done=occurrence.is_done,
+        done_by_id=occurrence.done_by_id,
+        done_at=occurrence.done_at,
+        assignee_away=is_user_away(absences_by_user, occurrence.assigned_user_id, occurrence.due_date),
+    )
 
 
 @router.get("", response_model=list[DutyOut])
@@ -157,10 +173,28 @@ async def get_duty(duty_id: uuid.UUID, session: AsyncSession = Depends(get_sessi
     )
     occurrences = list(occ_result.scalars())
 
+    absences_by_user = await load_active_absences_by_user(
+        session, list({o.assigned_user_id for o in occurrences})
+    )
+    occurrence_outs = [
+        DutyOccurrenceOut(
+            id=o.id,
+            due_date=o.due_date,
+            period_index=o.period_index,
+            assigned_user_id=o.assigned_user_id,
+            is_manual_override=o.is_manual_override,
+            is_done=o.is_done,
+            done_by_id=o.done_by_id,
+            done_at=o.done_at,
+            assignee_away=is_user_away(absences_by_user, o.assigned_user_id, o.due_date),
+        )
+        for o in occurrences
+    ]
+
     base = _build_duty_out(duty)
     return DutyDetailOut(
         **base.model_dump(),
-        occurrences=occurrences,
+        occurrences=occurrence_outs,
         overrides=list(duty.overrides),
     )
 
@@ -213,7 +247,7 @@ async def toggle_occurrence_done(
     occurrence.done_by_id = user.id if occurrence.is_done else None
     occurrence.done_at = datetime.now(timezone.utc) if occurrence.is_done else None
     await session.commit()
-    return occurrence
+    return await _build_occurrence_out(session, occurrence)
 
 
 @router.patch("/{duty_id}/occurrences/{occurrence_id}", response_model=DutyOccurrenceOut)
@@ -231,7 +265,7 @@ async def reassign_occurrence(
     occurrence.assigned_user_id = data.assigned_user_id
     occurrence.is_manual_override = True
     await session.commit()
-    return occurrence
+    return await _build_occurrence_out(session, occurrence)
 
 
 @router.post("/{duty_id}/overrides", response_model=DutyOverrideOut, status_code=201)

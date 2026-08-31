@@ -33,6 +33,7 @@ export interface DutyOccurrence {
   is_done: boolean
   done_by_id: string | null
   done_at: string | null
+  assignee_away: boolean
 }
 
 export interface DutyOverride {
