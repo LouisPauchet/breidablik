@@ -24,6 +24,21 @@
       </li>
     </ul>
 
+    <h2>Subscribe to your calendar</h2>
+    <div class="card">
+      <p class="muted">
+        Add this link in Google/Apple/Outlook calendar as a URL subscription to see your
+        duties, tasks, all household events, and everyone's away dates.
+      </p>
+      <div class="feed-row">
+        <input :value="feedUrl" readonly @focus="($event.target as HTMLInputElement).select()" />
+        <button type="button" @click="onCopyFeedUrl">{{ copied ? 'Copied!' : 'Copy' }}</button>
+      </div>
+      <button type="button" class="link-btn" @click="onRegenerateFeed">
+        Regenerate link (if it ever leaks)
+      </button>
+    </div>
+
     <p class="muted future-note">2FA and trusted-device PIN setup are coming soon.</p>
   </div>
 </template>
@@ -47,6 +62,12 @@ const pushSupported = ref(false)
 const subscribed = ref(false)
 const pushError = ref('')
 const notifications = ref<NotificationItem[]>([])
+const copied = ref(false)
+
+const feedUrl = computed(() => {
+  if (!authStore.user || typeof window === 'undefined') return ''
+  return `${window.location.origin}/calendar/${authStore.user.calendar_feed_token}.ics`
+})
 
 onMounted(async () => {
   pushSupported.value = push.isSupported()
@@ -80,6 +101,21 @@ async function onOpen(n: NotificationItem) {
     n.is_read = true
   }
   if (n.url) await router.push(n.url)
+}
+
+async function onCopyFeedUrl() {
+  try {
+    await navigator.clipboard.writeText(feedUrl.value)
+    copied.value = true
+    setTimeout(() => (copied.value = false), 2000)
+  } catch {
+    // Clipboard API can be unavailable (e.g. insecure context) — the input is still
+    // select-on-focus, so the user can copy manually either way.
+  }
+}
+
+async function onRegenerateFeed() {
+  await authStore.regenerateCalendarFeedToken()
 }
 </script>
 
@@ -137,6 +173,41 @@ async function onOpen(n: NotificationItem) {
 }
 
 .future-note {
+  font-size: 0.8rem;
+}
+
+.feed-row {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+}
+
+.feed-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.5rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 0.8rem;
+}
+
+.feed-row button {
+  padding: 0.5rem 0.8rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  padding: 0;
   font-size: 0.8rem;
 }
 </style>

@@ -4,6 +4,7 @@ export interface AuthUser {
   display_name: string
   is_2fa_enabled: boolean
   is_superuser: boolean
+  calendar_feed_token: string
 }
 
 interface LoginResult {
@@ -48,6 +49,10 @@ export const useAuthStore = defineStore('auth', {
         body: { pin },
       })
       this.user = res.user
+    },
+
+    async regenerateCalendarFeedToken() {
+      this.user = await $fetch<AuthUser>('/api/auth/calendar-feed/regenerate', { method: 'POST' })
     },
 
     async logout() {
