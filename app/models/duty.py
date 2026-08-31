@@ -7,11 +7,61 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db import Base
 
 
+class DutyTeam(Base):
+    """A group of duties whose responsibility rotates together across a shared set of
+    members — a "chore wheel": each rotation period, every attached duty goes to a
+    different member, and it's a different assignment again next period (see
+    app/services/rotation.py:resolve_team_duty_assignee). start_date anchors the rotation
+    the same way Duty.start_date does — pick a date that's already the intended "change
+    day" (e.g. a Monday) and, as long as rotation_interval_days is a multiple of 7, every
+    later period boundary lands on that same weekday automatically.
+    """
+
+    __tablename__ = "duty_team"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(150))
+    description: Mapped[str | None] = mapped_column(Text, default=None)
+
+    start_date: Mapped[date] = mapped_column(Date)
+    rotation_interval_days: Mapped[int] = mapped_column(Integer)
+
+    created_by_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("user.id"))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    members: Mapped[list["DutyTeamMember"]] = relationship(
+        back_populates="team", cascade="all, delete-orphan", order_by="DutyTeamMember.order_index"
+    )
+    # cascade="all, delete-orphan" (not just the FK's ondelete="CASCADE") because without it
+    # SQLAlchemy's own unit-of-work nulls out Duty.team_id on delete before the DB constraint
+    # ever runs, leaving an unresolvable duty (no team, no rotation_interval_days/assignees
+    # of its own either) instead of actually deleting it.
+    duties: Mapped[list["Duty"]] = relationship(
+        back_populates="team", cascade="all, delete-orphan", order_by="Duty.created_at"
+    )
+
+
+class DutyTeamMember(Base):
+    __tablename__ = "duty_team_member"
+    __table_args__ = (
+        UniqueConstraint("team_id", "order_index", name="uq_duty_team_member_order"),
+        UniqueConstraint("team_id", "user_id", name="uq_duty_team_member_user"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    team_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("duty_team.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"))
+    order_index: Mapped[int] = mapped_column(Integer)
+
+    team: Mapped["DutyTeam"] = relationship(back_populates="members")
+
+
 class Duty(Base):
     """A recurring chore with two independent cadences: how often it needs doing
-    (task_interval_days) and how often the responsible person changes
-    (rotation_interval_days) — e.g. bathroom cleaned weekly, responsibility rotates every
-    two weeks. Both are anchored to the same start_date.
+    (task_interval_days) and how often the responsible person changes. The latter is either
+    set per-duty (rotation_interval_days + assignees below) or inherited from a DutyTeam
+    (team_id set) — never both: a team-attached duty ignores its own rotation_interval_days
+    and assignees entirely in favor of the team's chore-wheel rotation.
     """
 
     __tablename__ = "duty"
@@ -22,7 +72,16 @@ class Duty(Base):
 
     start_date: Mapped[date] = mapped_column(Date)
     task_interval_days: Mapped[int] = mapped_column(Integer)
-    rotation_interval_days: Mapped[int] = mapped_column(Integer)
+    # Null when team_id is set — the team's rotation_interval_days governs instead.
+    rotation_interval_days: Mapped[int | None] = mapped_column(Integer, default=None)
+
+    # CASCADE, not SET NULL: a team-attached duty has no rotation_interval_days or assignees
+    # of its own, so detaching it from a deleted team would leave it in a broken,
+    # unresolvable state rather than a merely-unconfigured one. Deleting a team is
+    # understood to delete its duties too.
+    team_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("duty_team.id", ondelete="CASCADE"), default=None, index=True
+    )
 
     is_active: Mapped[bool] = mapped_column(default=True)
     created_by_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("user.id"))
@@ -37,6 +96,7 @@ class Duty(Base):
     occurrences: Mapped[list["DutyOccurrence"]] = relationship(
         back_populates="duty", cascade="all, delete-orphan"
     )
+    team: Mapped["DutyTeam | None"] = relationship(back_populates="duties")
 
 
 class DutyAssignee(Base):

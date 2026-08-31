@@ -24,6 +24,7 @@ from app.schemas.duty import (
     UpcomingOccurrenceOut,
 )
 from app.services.absences import is_user_away, load_active_absences_by_user
+from app.services.duty_teams import load_team_with_relations, resolve_team_duty_current_assignee
 from app.services.occurrences import DEFAULT_HORIZON_DAYS, ensure_occurrences_materialized
 from app.services.rotation import (
     compute_period_index,
@@ -37,9 +38,21 @@ from app.timeutils import today
 router = APIRouter(prefix="/api/duties", tags=["duties"], dependencies=[Depends(current_active_user)])
 
 
-def _build_current_period(duty: Duty) -> CurrentPeriodOut:
-    ordered = sorted_assignees(duty.assignees)
+async def _build_current_period(session: AsyncSession, duty: Duty) -> CurrentPeriodOut:
     on_date = today()
+
+    if duty.team_id is not None:
+        team = await load_team_with_relations(session, duty.team_id)
+        if team is None:
+            raise HTTPException(status_code=500, detail="DUTY_TEAM_MISSING")
+        period_index = compute_period_index(team, on_date)
+        assignee_id = await resolve_team_duty_current_assignee(session, team, duty, on_date)
+        start, end = period_bounds(team, period_index)
+        return CurrentPeriodOut(
+            period_index=period_index, start_date=start, end_date=end, assignee_user_id=assignee_id
+        )
+
+    ordered = sorted_assignees(duty.assignees)
     period_index = compute_period_index(duty, on_date)
     overrides_by_period = overrides_by_period_index(duty.overrides)
     assignee_id = resolve_assignee_for_period(ordered, overrides_by_period, period_index)
@@ -49,7 +62,7 @@ def _build_current_period(duty: Duty) -> CurrentPeriodOut:
     )
 
 
-def _build_duty_out(duty: Duty) -> DutyOut:
+async def _build_duty_out(session: AsyncSession, duty: Duty) -> DutyOut:
     return DutyOut(
         id=duty.id,
         title=duty.title,
@@ -57,11 +70,12 @@ def _build_duty_out(duty: Duty) -> DutyOut:
         start_date=duty.start_date,
         task_interval_days=duty.task_interval_days,
         rotation_interval_days=duty.rotation_interval_days,
+        team_id=duty.team_id,
         is_active=duty.is_active,
         created_by_id=duty.created_by_id,
         created_at=duty.created_at,
         assignees=list(duty.assignees),
-        current_period=_build_current_period(duty),
+        current_period=await _build_current_period(session, duty),
     )
 
 
@@ -115,7 +129,7 @@ async def list_duties(session: AsyncSession = Depends(get_session)):
         .order_by(Duty.title)
     )
     duties = result.scalars().unique().all()
-    return [_build_duty_out(d) for d in duties]
+    return [await _build_duty_out(session, d) for d in duties]
 
 
 @router.get("/on-duty-today", response_model=list[OnDutyTodayOut])
@@ -126,15 +140,22 @@ async def on_duty_today(session: AsyncSession = Depends(get_session)):
         .where(Duty.is_active.is_(True))
     )
     duties = result.scalars().unique().all()
+    on_date = today()
 
     out = []
     for duty in duties:
-        ordered = sorted_assignees(duty.assignees)
-        if not ordered:
-            continue
-        period_index = compute_period_index(duty, today())
-        overrides_by_period = overrides_by_period_index(duty.overrides)
-        assignee_id = resolve_assignee_for_period(ordered, overrides_by_period, period_index)
+        if duty.team_id is not None:
+            team = await load_team_with_relations(session, duty.team_id)
+            if team is None or not team.members:
+                continue
+            assignee_id = await resolve_team_duty_current_assignee(session, team, duty, on_date)
+        else:
+            ordered = sorted_assignees(duty.assignees)
+            if not ordered:
+                continue
+            period_index = compute_period_index(duty, on_date)
+            overrides_by_period = overrides_by_period_index(duty.overrides)
+            assignee_id = resolve_assignee_for_period(ordered, overrides_by_period, period_index)
         out.append(OnDutyTodayOut(duty_id=duty.id, duty_title=duty.title, assignee_user_id=assignee_id))
     return out
 
@@ -188,6 +209,7 @@ async def create_duty(
         start_date=data.start_date,
         task_interval_days=data.task_interval_days,
         rotation_interval_days=data.rotation_interval_days,
+        team_id=data.team_id,
         created_by_id=user.id,
     )
     session.add(duty)
@@ -197,7 +219,7 @@ async def create_duty(
         session.add(DutyAssignee(duty_id=duty.id, user_id=user_id, order_index=index))
     await session.commit()
 
-    return _build_duty_out(await _load_duty_or_404(session, duty.id))
+    return await _build_duty_out(session, await _load_duty_or_404(session, duty.id))
 
 
 @router.get("/{duty_id}", response_model=DutyDetailOut)
@@ -229,7 +251,7 @@ async def get_duty(duty_id: uuid.UUID, session: AsyncSession = Depends(get_sessi
         for o in occurrences
     ]
 
-    base = _build_duty_out(duty)
+    base = await _build_duty_out(session, duty)
     return DutyDetailOut(
         **base.model_dump(),
         occurrences=occurrence_outs,
@@ -254,7 +276,18 @@ async def update_duty(
     if data.rotation_interval_days is not None:
         duty.rotation_interval_days = data.rotation_interval_days
 
-    if data.assignee_user_ids is not None:
+    if data.team_id is not None:
+        # Attaching to a team makes the duty's own rotation_interval_days/assignees
+        # meaningless — clear them so a leftover manual config can't confuse anyone (the
+        # schema already rejects setting team_id together with either field in this same
+        # request, but this covers a duty that already had them from before).
+        duty.team_id = data.team_id
+        duty.rotation_interval_days = None
+        await session.execute(delete(DutyAssignee).where(DutyAssignee.duty_id == duty_id))
+        await session.flush()
+        await session.commit()
+        await session.refresh(duty, attribute_names=["assignees"])
+    elif data.assignee_user_ids is not None:
         # Reordering/replacing assignees only affects future materialization — it never
         # rewrites already-snapshotted DutyOccurrence rows.
         await session.execute(delete(DutyAssignee).where(DutyAssignee.duty_id == duty_id))
@@ -271,7 +304,7 @@ async def update_duty(
     else:
         await session.commit()
 
-    return _build_duty_out(duty)
+    return await _build_duty_out(session, duty)
 
 
 @router.delete("/{duty_id}", status_code=204)

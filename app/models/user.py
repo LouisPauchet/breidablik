@@ -1,10 +1,10 @@
 import secrets
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from fastapi_users.db import SQLAlchemyBaseUserTableUUID
 from fastapi_users_db_sqlalchemy.access_token import SQLAlchemyBaseAccessTokenTableUUID
-from sqlalchemy import ForeignKey, Integer, String, Text, Uuid, func
+from sqlalchemy import Date, ForeignKey, Integer, String, Text, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -14,6 +14,11 @@ class User(SQLAlchemyBaseUserTableUUID, Base):
     __tablename__ = "user"
 
     display_name: Mapped[str] = mapped_column(String(100))
+
+    # Year is kept (not just month/day) since it's the simplest thing that stores a real
+    # date — the birthday display only ever uses the month/day part. Non-admins are asked to
+    # fill this in until they do; admins can dismiss that prompt (see app/routers/members.py).
+    birthday: Mapped[date | None] = mapped_column(Date, default=None)
 
     # 2FA (TOTP). totp_secret is only persisted once enrollment is confirmed with a valid
     # code — never left in a half-enabled state. totp_recovery_codes is a JSON-encoded list

@@ -1,13 +1,15 @@
 import uuid
 from datetime import date
 
-from app.models.duty import Duty, DutyAssignee, DutyOverride
+from app.models.duty import Duty, DutyAssignee, DutyOverride, DutyTeam, DutyTeamMember
 from app.services.rotation import (
     compute_period_index,
     compute_rotation_assignee,
     overrides_by_period_index,
     period_bounds,
     resolve_assignee_for_period,
+    resolve_team_duty_assignee,
+    team_duty_index,
 )
 
 ALICE = uuid.uuid4()
@@ -122,3 +124,95 @@ def test_rotation_interval_not_a_multiple_of_task_interval_still_resolves():
     assert periods == [0, 0, 1, 2]
     resolved = [compute_rotation_assignee(assignees, p) for p in periods]
     assert resolved == [ALICE, ALICE, BOB, ALICE]
+
+
+def make_team(start_date: date, rotation_interval_days: int = 14) -> DutyTeam:
+    return DutyTeam(
+        id=uuid.uuid4(),
+        name="Cleaning Team",
+        start_date=start_date,
+        rotation_interval_days=rotation_interval_days,
+        created_by_id=uuid.uuid4(),
+    )
+
+
+def make_team_members(team_id, user_ids) -> list[DutyTeamMember]:
+    return [
+        DutyTeamMember(team_id=team_id, user_id=uid, order_index=i) for i, uid in enumerate(user_ids)
+    ]
+
+
+def test_team_period_index_reuses_duty_formula():
+    team = make_team(date(2026, 1, 1), rotation_interval_days=14)
+    assert compute_period_index(team, date(2026, 1, 1)) == 0
+    assert compute_period_index(team, date(2026, 1, 14)) == 0
+    assert compute_period_index(team, date(2026, 1, 15)) == 1
+
+
+def test_team_duty_index_finds_stable_position():
+    duty_a = Duty(id=uuid.uuid4(), title="Bathroom", start_date=date.today(), task_interval_days=7, created_by_id=uuid.uuid4())
+    duty_b = Duty(id=uuid.uuid4(), title="Kitchen", start_date=date.today(), task_interval_days=7, created_by_id=uuid.uuid4())
+    duty_c = Duty(id=uuid.uuid4(), title="Living room", start_date=date.today(), task_interval_days=7, created_by_id=uuid.uuid4())
+    ordered = [duty_a, duty_b, duty_c]
+    assert team_duty_index(ordered, duty_a.id) == 0
+    assert team_duty_index(ordered, duty_b.id) == 1
+    assert team_duty_index(ordered, duty_c.id) == 2
+
+
+def test_team_duty_index_missing_raises():
+    duty_a = Duty(id=uuid.uuid4(), title="Bathroom", start_date=date.today(), task_interval_days=7, created_by_id=uuid.uuid4())
+    try:
+        team_duty_index([duty_a], uuid.uuid4())
+        assert False, "expected ValueError"
+    except ValueError:
+        pass
+
+
+def test_chore_wheel_distributes_duties_across_members_each_period():
+    team_id = uuid.uuid4()
+    members = make_team_members(team_id, [ALICE, BOB, CARL])
+
+    # 3 duties, 3 members, period 0: duty 0->Alice, 1->Bob, 2->Carl (identity mapping).
+    assert resolve_team_duty_assignee(members, duty_index=0, team_period_index=0, overrides_by_period={}) == ALICE
+    assert resolve_team_duty_assignee(members, duty_index=1, team_period_index=0, overrides_by_period={}) == BOB
+    assert resolve_team_duty_assignee(members, duty_index=2, team_period_index=0, overrides_by_period={}) == CARL
+
+    # Period 1: shifts by one — duty 0 now goes to Bob (what duty 1 had last period).
+    assert resolve_team_duty_assignee(members, duty_index=0, team_period_index=1, overrides_by_period={}) == BOB
+    assert resolve_team_duty_assignee(members, duty_index=1, team_period_index=1, overrides_by_period={}) == CARL
+    assert resolve_team_duty_assignee(members, duty_index=2, team_period_index=1, overrides_by_period={}) == ALICE
+
+    # Period 3 (== period 0 mod 3 members): back to the identity mapping.
+    assert resolve_team_duty_assignee(members, duty_index=0, team_period_index=3, overrides_by_period={}) == ALICE
+
+
+def test_chore_wheel_handles_more_duties_than_members():
+    team_id = uuid.uuid4()
+    members = make_team_members(team_id, [ALICE, BOB])
+
+    # 4 duties (indices 0-3), 2 members: duties wrap around within the same period.
+    assignees_period_0 = [
+        resolve_team_duty_assignee(members, duty_index=i, team_period_index=0, overrides_by_period={})
+        for i in range(4)
+    ]
+    assert assignees_period_0 == [ALICE, BOB, ALICE, BOB]
+
+    # Next period, the wrap-around pattern itself shifts, so it's not always the same two
+    # duties landing on the same person.
+    assignees_period_1 = [
+        resolve_team_duty_assignee(members, duty_index=i, team_period_index=1, overrides_by_period={})
+        for i in range(4)
+    ]
+    assert assignees_period_1 == [BOB, ALICE, BOB, ALICE]
+
+
+def test_chore_wheel_override_takes_precedence():
+    team_id = uuid.uuid4()
+    members = make_team_members(team_id, [ALICE, BOB, CARL])
+    overrides = {1: CARL}
+
+    assert resolve_team_duty_assignee(members, duty_index=0, team_period_index=1, overrides_by_period=overrides) == CARL
+    # A different duty in the SAME overridden period is unaffected — the override is keyed
+    # only by period_index, and in this design a single override entry applies to whichever
+    # one duty's DutyOverride row it came from, not every duty in the team.
+    assert resolve_team_duty_assignee(members, duty_index=0, team_period_index=0, overrides_by_period=overrides) == ALICE

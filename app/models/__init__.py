@@ -1,5 +1,5 @@
 from app.models.absence import Absence
-from app.models.duty import Duty, DutyAssignee, DutyOccurrence, DutyOverride
+from app.models.duty import Duty, DutyAssignee, DutyOccurrence, DutyOverride, DutyTeam, DutyTeamMember
 from app.models.event import Event, EventRSVP, EventSeries, EventType, RSVPStatus
 from app.models.notification import Notification, PushSubscription
 from app.models.shopping import ShoppingItem, ShoppingList
@@ -13,6 +13,8 @@ __all__ = [
     "DutyAssignee",
     "DutyOccurrence",
     "DutyOverride",
+    "DutyTeam",
+    "DutyTeamMember",
     "Event",
     "EventRSVP",
     "EventSeries",
