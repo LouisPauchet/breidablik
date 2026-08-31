@@ -11,6 +11,7 @@ from app.routers.absences import router as absences_router
 from app.routers.admin import router as admin_router
 from app.routers.duties import router as duties_router
 from app.routers.members import router as members_router
+from app.routers.tasks import router as tasks_router
 from app.schemas.user import UserRead, UserUpdate
 
 settings = get_settings()
@@ -24,6 +25,7 @@ app.include_router(admin_router)
 app.include_router(duties_router)
 app.include_router(members_router)
 app.include_router(absences_router)
+app.include_router(tasks_router)
 app.include_router(
     fastapi_users.get_users_router(UserRead, UserUpdate),
     prefix="/api/users",
