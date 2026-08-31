@@ -1,9 +1,23 @@
 <template>
   <div>
-    <h1>Calendar</h1>
-    <p class="muted">
-      Events and a combined view are coming soon. For now: who's away and when.
-    </p>
+    <header class="page-header">
+      <h1>Calendar</h1>
+      <NuxtLink to="/events/new" class="btn-primary">+ New event</NuxtLink>
+    </header>
+
+    <p v-if="!agenda.length" class="muted">Nothing coming up in the next 8 weeks.</p>
+    <ul class="agenda-list">
+      <li v-for="entry in agenda" :key="entry.key" class="agenda-row">
+        <span class="kind-badge" :class="entry.kind">{{ entry.kind }}</span>
+        <div class="agenda-body">
+          <NuxtLink v-if="entry.href" :to="entry.href" class="agenda-title" :class="{ done: entry.done }">
+            {{ entry.title }}
+          </NuxtLink>
+          <span v-else class="agenda-title" :class="{ done: entry.done }">{{ entry.title }}</span>
+          <div class="agenda-meta">{{ entry.whenLabel }}<span v-if="entry.detail"> &middot; {{ entry.detail }}</span></div>
+        </div>
+      </li>
+    </ul>
 
     <h2>Away</h2>
     <p v-if="!absences.absences.length" class="muted">Nobody has marked themselves away.</p>
@@ -14,14 +28,14 @@
           {{ formatDate(absence.start_date) }} &ndash; {{ formatDate(absence.end_date) }}
           <span v-if="absence.reason" class="muted">({{ absence.reason }})</span>
         </div>
-        <button v-if="absence.user_id === authStore.user?.id" type="button" @click="onDelete(absence.id)">
+        <button v-if="absence.user_id === authStore.user?.id" type="button" @click="onDeleteAbsence(absence.id)">
           Remove
         </button>
       </li>
     </ul>
 
     <h2>Mark yourself away</h2>
-    <form class="card" @submit.prevent="submit">
+    <form class="card" @submit.prevent="submitAbsence">
       <label>
         From
         <input v-model="startDate" type="date" required />
@@ -42,23 +56,128 @@
 
 <script setup lang="ts">
 const absences = useAbsencesStore()
+const tasks = useTasksStore()
+const events = useEventsStore()
 const members = useMembersStore()
 const authStore = useAuthStore()
 
-await Promise.all([members.ensureLoaded(), absences.fetchAbsences()])
+await Promise.all([
+  members.ensureLoaded(),
+  absences.fetchAbsences(),
+  tasks.fetchTasks(),
+  events.fetchEvents(),
+])
 
-const today = new Date().toISOString().slice(0, 10)
-const startDate = ref(today)
-const endDate = ref(today)
-const reason = ref('')
-const loading = ref(false)
-const error = ref('')
+const upcomingOccurrences = await $fetch<
+  { duty_id: string; duty_title: string; due_date: string; assigned_user_id: string; is_done: boolean }[]
+>('/api/duties/occurrences/upcoming')
+
+interface AgendaEntry {
+  key: string
+  date: Date
+  kind: 'duty' | 'task' | 'event' | 'away'
+  title: string
+  detail: string
+  whenLabel: string
+  done?: boolean
+  href?: string
+}
+
+const today = new Date()
+today.setHours(0, 0, 0, 0)
+const windowStart = new Date(today)
+windowStart.setDate(windowStart.getDate() - 1)
+const windowEnd = new Date(today)
+windowEnd.setDate(windowEnd.getDate() + 56)
+
+function inWindow(d: Date) {
+  return d >= windowStart && d <= windowEnd
+}
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
-async function submit() {
+function formatDateTime(iso: string) {
+  return new Date(iso).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
+const agenda = computed<AgendaEntry[]>(() => {
+  const entries: AgendaEntry[] = []
+
+  for (const occ of upcomingOccurrences) {
+    const d = new Date(occ.due_date)
+    if (!inWindow(d)) continue
+    entries.push({
+      key: `duty-${occ.duty_id}-${occ.due_date}`,
+      date: d,
+      kind: 'duty',
+      title: occ.duty_title,
+      detail: members.nameOf(occ.assigned_user_id),
+      whenLabel: formatDate(occ.due_date),
+      done: occ.is_done,
+      href: `/duties/${occ.duty_id}`,
+    })
+  }
+
+  for (const task of tasks.tasks) {
+    if (!task.due_date) continue
+    const d = new Date(task.due_date)
+    if (!inWindow(d)) continue
+    entries.push({
+      key: `task-${task.id}`,
+      date: d,
+      kind: 'task',
+      title: task.title,
+      detail: task.assignee_user_ids.map((id) => members.nameOf(id)).join(', '),
+      whenLabel: formatDate(task.due_date),
+      done: task.is_done,
+      href: '/tasks',
+    })
+  }
+
+  for (const event of events.events) {
+    const d = new Date(event.start_at)
+    if (!inWindow(d)) continue
+    entries.push({
+      key: `event-${event.id}`,
+      date: d,
+      kind: 'event',
+      title: event.title,
+      detail: event.location ?? '',
+      whenLabel: formatDateTime(event.start_at),
+      href: `/events/${event.id}`,
+    })
+  }
+
+  for (const absence of absences.absences) {
+    const d = new Date(absence.start_date)
+    if (!inWindow(d)) continue
+    entries.push({
+      key: `away-${absence.id}`,
+      date: d,
+      kind: 'away',
+      title: `${members.nameOf(absence.user_id)} away`,
+      detail: absence.reason ?? '',
+      whenLabel: `${formatDate(absence.start_date)} - ${formatDate(absence.end_date)}`,
+    })
+  }
+
+  return entries.sort((a, b) => a.date.getTime() - b.date.getTime())
+})
+
+const startDate = ref(new Date().toISOString().slice(0, 10))
+const endDate = ref(new Date().toISOString().slice(0, 10))
+const reason = ref('')
+const loading = ref(false)
+const error = ref('')
+
+async function submitAbsence() {
   error.value = ''
   loading.value = true
   try {
@@ -75,13 +194,98 @@ async function submit() {
   }
 }
 
-async function onDelete(id: string) {
+async function onDeleteAbsence(id: string) {
   await absences.deleteAbsence(id)
 }
 </script>
 
 <style scoped>
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: white;
+  padding: 0.5rem 0.9rem;
+  border-radius: 0.5rem;
+  text-decoration: none;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
 .muted {
+  color: var(--muted);
+}
+
+.agenda-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.agenda-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  padding: 0.7rem;
+}
+
+.kind-badge {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  color: white;
+  margin-top: 0.1rem;
+}
+
+.kind-badge.duty {
+  background: #0f766e;
+}
+
+.kind-badge.task {
+  background: #2563eb;
+}
+
+.kind-badge.event {
+  background: #9333ea;
+}
+
+.kind-badge.away {
+  background: #d97706;
+}
+
+.agenda-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.agenda-title {
+  display: block;
+  font-weight: 600;
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.agenda-title.done {
+  text-decoration: line-through;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.agenda-meta {
+  font-size: 0.8rem;
   color: var(--muted);
 }
 
