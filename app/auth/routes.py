@@ -5,6 +5,7 @@ CRUD they already cover well — this module only exists for the multi-step logi
 don't support out of the box.
 """
 
+import secrets
 import uuid
 from types import SimpleNamespace
 
@@ -63,6 +64,7 @@ def _serialize_user(user: User) -> dict:
         "display_name": user.display_name,
         "is_2fa_enabled": user.is_2fa_enabled,
         "is_superuser": user.is_superuser,
+        "calendar_feed_token": user.calendar_feed_token,
     }
 
 
@@ -176,6 +178,20 @@ async def logout(
 
 @router.get("/me")
 async def me(user: User = Depends(current_active_user)):
+    return _serialize_user(user)
+
+
+@router.post("/calendar-feed/regenerate")
+async def regenerate_calendar_feed_token(
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """The token in /calendar/{token}.ics is a bearer credential fetched unauthenticated by
+    external calendar apps — regenerate it here if it ever leaks, without touching the
+    user's login credentials.
+    """
+    user.calendar_feed_token = secrets.token_urlsafe(32)
+    await session.commit()
     return _serialize_user(user)
 
 
