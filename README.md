@@ -64,7 +64,9 @@ There's no Docker on shared hosting, so:
    ```bash
    cd frontend && npm install && npm run generate
    ```
-   Upload the whole repo, including `frontend/.output/public/`, to the host.
+   Upload the whole repo, including `frontend/.output/public/`, to the host. (Or, once you've
+   cut at least one release — see below — skip this step entirely and let
+   `scripts/passenger_update.py` install the first release for you instead of a manual upload.)
 2. Install Python dependencies on the host (however your host expects — a virtualenv `pip
    install -e .` is typical) and run `alembic upgrade head` against your Postgres database.
 3. Point Passenger's app root at the repo root; it picks up `passenger_wsgi.py` automatically.
@@ -81,6 +83,44 @@ There's no Docker on shared hosting, so:
    Passenger is likely old enough to be WSGI-only (native ASGI support needs Passenger ≥6).
    Set `PASSENGER_FORCE_WSGI=1` in the environment to wrap the app for that case instead of
    digging further — check the Passenger error log first to confirm that's actually the issue.
+
+## Releases and updating Passenger
+
+`.github/workflows/ci.yml` runs the backend test suite and a frontend build check on every
+push/PR. `.github/workflows/release.yml` cuts a release: push a version tag matching the
+`[project].version` already committed in `pyproject.toml` (bump that first, commit, then tag —
+the workflow fails the release if they don't match):
+
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+That builds the frontend, re-runs the tests, and publishes a GitHub Release with a
+`breidablik-release.tar.gz` asset containing everything Passenger needs (`app/`,
+`pyproject.toml`, `passenger_wsgi.py`, `alembic.ini`, the prebuilt `frontend/.output/`).
+
+Since a shared host can't watch GitHub on its own, `scripts/passenger_update.py` is a
+dependency-free script that does it from the other end — point a cron job at it (hourly or
+daily; GitHub's unauthenticated API rate limit is 60/hour per IP, so don't go much tighter than
+that without setting `GITHUB_TOKEN`):
+
+```bash
+0 4 * * * /path/to/venv/bin/python3 /path/to/scripts/passenger_update.py \
+  --base-url https://your-domain --cron-secret "$CRON_SECRET" >> /path/to/update.log 2>&1
+```
+
+It checks the latest release against the version already on disk and, only if there's a newer
+one: downloads it, backs up the current `app/`, `pyproject.toml`, `passenger_wsgi.py`,
+`alembic.ini`, and `frontend/.output/` (restored automatically if anything below fails),
+overlays the new versions of exactly those paths (everything else — `.env`, the `var/` avatar
+uploads directory, a venv, `.git` — is left alone), reinstalls Python dependencies, runs
+`alembic upgrade head`, and finally touches `tmp/restart.txt` so Passenger reloads the app —
+only once every prior step has actually succeeded. It then calls
+`POST /internal/cron/notify-update` on the running app so admins get notified in-app (and via
+push, if configured) that the update landed. Run it with `--check-only` to just see whether an
+update is available, or `--dry-run` to log what it would do without touching anything; `--help`
+lists every flag (repo, paths, tokens — all also settable via environment variable).
 
 ## Environment variables
 

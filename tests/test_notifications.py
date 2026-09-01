@@ -10,7 +10,7 @@ import app.services.push as push_module
 from app.models.duty import Duty, DutyAssignee
 from app.models.notification import Notification, PushSubscription
 from app.models.shopping import ShoppingItem, ShoppingList
-from app.services.notifications import notify_shopping_item_added
+from app.services.notifications import notify_admins_of_update, notify_shopping_item_added
 from app.services.push import send_push_to_user
 
 ALICE = uuid.uuid4()
@@ -109,6 +109,43 @@ async def test_skip_self_when_adder_is_on_duty(test_engine):
 
         result = await session.execute(select(Notification))
         assert list(result.scalars()) == []
+
+
+async def test_notify_admins_of_update_notifies_only_active_superusers(test_engine):
+    from fastapi_users.db import SQLAlchemyUserDatabase
+
+    from app.auth.users import UserManager
+    from app.models.user import User
+    from app.schemas.user import UserCreate
+
+    async with _session(test_engine) as session:
+        manager = UserManager(SQLAlchemyUserDatabase(session, User))
+        admin = await manager.create(
+            UserCreate(
+                email="admin@example.com",
+                password="correcthorsebatterystaple",
+                display_name="Admin",
+                is_superuser=True,
+            ),
+            safe=False,
+        )
+        member = await manager.create(
+            UserCreate(
+                email="member@example.com",
+                password="correcthorsebatterystaple",
+                display_name="Member",
+            ),
+            safe=False,
+        )
+
+        await notify_admins_of_update(session, "1.2.3")
+
+        result = await session.execute(select(Notification))
+        notifications = list(result.scalars())
+        assert len(notifications) == 1
+        assert notifications[0].user_id == admin.id
+        assert notifications[0].user_id != member.id
+        assert "1.2.3" in notifications[0].body
 
 
 async def test_send_push_noop_without_vapid_configured(test_engine, monkeypatch):

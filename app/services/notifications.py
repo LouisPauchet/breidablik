@@ -7,6 +7,7 @@ from sqlalchemy.orm import selectinload
 from app.models.duty import Duty
 from app.models.notification import Notification
 from app.models.shopping import ShoppingItem, ShoppingList
+from app.models.user import User
 from app.services.push import send_push_to_user
 from app.services.rotation import (
     compute_period_index,
@@ -63,3 +64,23 @@ async def notify_shopping_item_added(
         on_duty_user_id,
         {"title": notification.title, "body": notification.body, "url": notification.url},
     )
+
+
+async def notify_admins_of_update(session: AsyncSession, version: str) -> None:
+    """Called by the Passenger update script (scripts/passenger_update.py) after it swaps in
+    a new release and runs migrations — lets admins know the deploy actually landed, since
+    that script runs unattended (cron or a manual SSH invocation), not from a browser.
+    """
+    result = await session.execute(
+        select(User).where(User.is_superuser.is_(True), User.is_active.is_(True))
+    )
+    admins = list(result.scalars())
+
+    title = "Breidablik updated"
+    body = f"The app was updated to v{version}."
+    for admin in admins:
+        session.add(Notification(user_id=admin.id, kind="app_updated", title=title, body=body, url="/profile"))
+    await session.commit()
+
+    for admin in admins:
+        await send_push_to_user(session, admin.id, {"title": title, "body": body, "url": "/profile"})
