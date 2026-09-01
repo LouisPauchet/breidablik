@@ -39,6 +39,16 @@ export interface EventCreatePayload {
   series_id?: string | null
 }
 
+export interface EventUpdatePayload {
+  title?: string
+  event_type?: EventType
+  description?: string | null
+  location?: string | null
+  start_at?: string
+  end_at?: string | null
+  series_id?: string | null
+}
+
 export const useEventsStore = defineStore('events', {
   state: () => ({
     events: [] as EventItem[],
@@ -64,6 +74,14 @@ export const useEventsStore = defineStore('events', {
 
     async createEvent(payload: EventCreatePayload) {
       return await $fetch<EventItem>('/api/events', { method: 'POST', body: payload })
+    },
+
+    async updateEvent(id: string, payload: EventUpdatePayload) {
+      const updated = await $fetch<EventItem>(`/api/events/${id}`, { method: 'PATCH', body: payload })
+      this.current = updated
+      const idx = this.events.findIndex((e) => e.id === id)
+      if (idx !== -1) this.events[idx] = updated
+      return updated
     },
 
     async createSeries(name: string, description?: string | null) {

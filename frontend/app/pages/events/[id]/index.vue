@@ -1,6 +1,8 @@
 <template>
   <div v-if="event">
-    <PageHeader :title="event.title" back="/events" />
+    <PageHeader :title="event.title" back="/events">
+      <NuxtLink :to="`/events/${event.id}/edit`" class="btn-primary">Edit</NuxtLink>
+    </PageHeader>
 
     <div class="info-card">
       <div><span class="type-badge">{{ event.event_type }}</span></div>
@@ -23,8 +25,8 @@
     </div>
 
     <ul class="rsvp-summary">
-      <li v-for="r in event.rsvps" :key="r.user_id">
-        {{ members.nameOf(r.user_id) }}: <strong>{{ r.status }}</strong>
+      <li v-for="row in rsvpByMember" :key="row.userId" :class="{ pending: !row.status }">
+        {{ row.name }}: <strong>{{ row.status ?? 'no response yet' }}</strong>
       </li>
     </ul>
 
@@ -65,6 +67,15 @@ const myRsvp = computed(
   () => event.value?.rsvps.find((r) => r.user_id === authStore.user?.id)?.status ?? null
 )
 
+const rsvpByMember = computed(() => {
+  const rsvps = event.value?.rsvps ?? []
+  return members.members.map((m) => ({
+    userId: m.id,
+    name: m.display_name,
+    status: rsvps.find((r) => r.user_id === m.id)?.status ?? null,
+  }))
+})
+
 function formatDateTime(iso: string) {
   return new Date(iso).toLocaleString(undefined, {
     month: 'short',
@@ -85,6 +96,16 @@ async function onDelete() {
 </script>
 
 <style scoped>
+.btn-primary {
+  background: var(--accent);
+  color: white;
+  padding: 0.4rem 0.8rem;
+  border-radius: 0.5rem;
+  text-decoration: none;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
 .info-card {
   border: 1px solid var(--border);
   border-radius: 0.75rem;
@@ -132,6 +153,10 @@ async function onDelete() {
   padding: 0;
   margin: 0 0 1.5rem;
   font-size: 0.9rem;
+  color: var(--fg);
+}
+
+.rsvp-summary li.pending {
   color: var(--muted);
 }
 
