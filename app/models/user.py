@@ -38,6 +38,13 @@ class User(SQLAlchemyBaseUserTableUUID, Base):
     # otherwise this doubles as a cache-busting value for the serving URL.
     avatar_updated_at: Mapped[datetime | None] = mapped_column(default=None)
 
+    # Set when an admin invites a member instead of setting their password directly: the
+    # account is created with a random, never-shared password and is_active=False, and stays
+    # that way until this token is redeemed at /invite/{token} (see app/auth/routes.py). None
+    # once accepted (or if the account was never invite-created at all).
+    invite_token: Mapped[str | None] = mapped_column(String(64), unique=True, index=True, default=None)
+    invite_token_expires_at: Mapped[datetime | None] = mapped_column(default=None)
+
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     device_trusts: Mapped[list["DeviceTrust"]] = relationship(

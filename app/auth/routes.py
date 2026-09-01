@@ -7,11 +7,13 @@ don't support out of the box.
 
 import secrets
 import uuid
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi_users.authentication.strategy.db import DatabaseStrategy
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.backend import auth_backend, current_active_user
@@ -41,6 +43,7 @@ from app.models.user import DeviceTrust, User
 from app.schemas.auth import (
     ChangePasswordRequest,
     DeviceTrustEnrollRequest,
+    InviteAcceptRequest,
     LoginRequest,
     PasswordConfirmRequest,
     PinLoginRequest,
@@ -253,8 +256,6 @@ async def revoke_device_trust(
     if device_id:
         device = await get_active_device_trust(session, device_id)
         if device and device.user_id == user.id:
-            from datetime import datetime, timezone
-
             device.revoked_at = datetime.now(timezone.utc)
             await session.commit()
     response = JSONResponse({"ok": True})
@@ -347,3 +348,45 @@ async def change_password(
     # the session used to make this request is untouched, so this device stays logged in.
     await user_manager.update(UserUpdate(password=data.new_password), user)
     return {"ok": True}
+
+
+async def _load_valid_invite(session: AsyncSession, token: str) -> User:
+    result = await session.execute(select(User).where(User.invite_token == token))
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="INVITE_NOT_FOUND")
+
+    expires_at = user.invite_token_expires_at
+    if expires_at is not None and expires_at.tzinfo is None:
+        # SQLite (tests) round-trips a DateTime(timezone=True) column back as naive; Postgres
+        # (production) doesn't have this problem, but comparing safely costs nothing either way.
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at is None or expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=410, detail="INVITE_EXPIRED")
+    return user
+
+
+@router.get("/invite/{token}")
+async def get_invite(token: str, session: AsyncSession = Depends(get_session)):
+    user = await _load_valid_invite(session, token)
+    return {"display_name": user.display_name, "email": user.email}
+
+
+@router.post("/invite/{token}/accept")
+async def accept_invite(
+    token: str,
+    data: InviteAcceptRequest,
+    session: AsyncSession = Depends(get_session),
+    user_manager: UserManager = Depends(get_user_manager),
+    strategy: DatabaseStrategy = Depends(auth_backend.get_strategy),
+):
+    user = await _load_valid_invite(session, token)
+    await user_manager.update(UserUpdate(password=data.password), user)
+
+    user.is_active = True
+    user.invite_token = None
+    user.invite_token_expires_at = None
+    await session.commit()
+    await session.refresh(user)
+
+    return await _finish_login(strategy, user)

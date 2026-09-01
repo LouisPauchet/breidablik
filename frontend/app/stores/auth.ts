@@ -87,6 +87,19 @@ export const useAuthStore = defineStore('auth', {
       })
     },
 
+    async fetchInvite(token: string) {
+      return await $fetch<{ display_name: string; email: string }>(`/api/auth/invite/${token}`)
+    },
+
+    async acceptInvite(token: string, password: string) {
+      const res = await $fetch<{ user: AuthUser }>(`/api/auth/invite/${token}/accept`, {
+        method: 'POST',
+        body: { password },
+      })
+      this.user = res.user
+      this.initialized = true
+    },
+
     async logout() {
       await $fetch('/api/auth/logout', { method: 'POST' })
       this.user = null
