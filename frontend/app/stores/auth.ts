@@ -80,6 +80,13 @@ export const useAuthStore = defineStore('auth', {
       if (this.user) this.user.avatar_updated_at = null
     },
 
+    async changePassword(currentPassword: string, newPassword: string) {
+      await $fetch('/api/auth/change-password', {
+        method: 'POST',
+        body: { current_password: currentPassword, new_password: newPassword },
+      })
+    },
+
     async logout() {
       await $fetch('/api/auth/logout', { method: 'POST' })
       this.user = null

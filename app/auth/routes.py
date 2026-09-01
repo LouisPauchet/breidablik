@@ -39,6 +39,7 @@ from app.config import get_settings
 from app.db import get_session
 from app.models.user import DeviceTrust, User
 from app.schemas.auth import (
+    ChangePasswordRequest,
     DeviceTrustEnrollRequest,
     LoginRequest,
     PasswordConfirmRequest,
@@ -46,6 +47,7 @@ from app.schemas.auth import (
     TotpEnrollConfirmRequest,
     TwoFactorVerifyRequest,
 )
+from app.schemas.user import UserUpdate
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -322,4 +324,26 @@ async def disable_totp(
     user.totp_secret = None
     user.totp_recovery_codes = None
     await session.commit()
+    return {"ok": True}
+
+
+@router.post("/change-password")
+async def change_password(
+    data: ChangePasswordRequest,
+    user: User = Depends(current_active_user),
+    user_manager: UserManager = Depends(get_user_manager),
+):
+    """Requires the current password even though the request is already authenticated —
+    same reasoning as disable_totp above: a session cookie alone shouldn't be enough to take
+    over the account's credentials outright.
+    """
+    credentials = SimpleNamespace(username=user.email, password=data.current_password)
+    verified_user = await user_manager.authenticate(credentials)
+    if verified_user is None:
+        raise HTTPException(status_code=400, detail="INVALID_CURRENT_PASSWORD")
+
+    # UserManager.update's on_after_update hook revokes this device's PIN trust (and every
+    # other device's) since they were established under the credential that just changed —
+    # the session used to make this request is untouched, so this device stays logged in.
+    await user_manager.update(UserUpdate(password=data.new_password), user)
     return {"ok": True}

@@ -47,6 +47,31 @@
 
     <h2>Security</h2>
     <div class="card">
+      <h3>Password</h3>
+      <label>
+        Current password
+        <input v-model="currentPassword" type="password" autocomplete="current-password" />
+      </label>
+      <label>
+        New password
+        <input v-model="newPassword" type="password" minlength="8" autocomplete="new-password" />
+      </label>
+      <label>
+        Confirm new password
+        <input v-model="confirmNewPassword" type="password" minlength="8" autocomplete="new-password" />
+      </label>
+      <p v-if="changePasswordError" class="error">{{ changePasswordError }}</p>
+      <p v-if="changePasswordSuccess" class="status-ok">Password changed.</p>
+      <button
+        type="button"
+        :disabled="changePasswordLoading || !currentPassword || !newPassword"
+        @click="onChangePassword"
+      >
+        Change password
+      </button>
+    </div>
+
+    <div class="card">
       <h3>Two-factor authentication</h3>
 
       <template v-if="totpStep === 'idle'">
@@ -232,6 +257,34 @@ async function onRemoveAvatar() {
     avatarError.value = 'Could not remove the photo — try again.'
   } finally {
     avatarLoading.value = false
+  }
+}
+
+const currentPassword = ref('')
+const newPassword = ref('')
+const confirmNewPassword = ref('')
+const changePasswordLoading = ref(false)
+const changePasswordError = ref('')
+const changePasswordSuccess = ref(false)
+
+async function onChangePassword() {
+  changePasswordError.value = ''
+  changePasswordSuccess.value = false
+  if (newPassword.value !== confirmNewPassword.value) {
+    changePasswordError.value = 'New passwords do not match.'
+    return
+  }
+  changePasswordLoading.value = true
+  try {
+    await authStore.changePassword(currentPassword.value, newPassword.value)
+    changePasswordSuccess.value = true
+    currentPassword.value = ''
+    newPassword.value = ''
+    confirmNewPassword.value = ''
+  } catch {
+    changePasswordError.value = 'Could not change your password — check your current password.'
+  } finally {
+    changePasswordLoading.value = false
   }
 }
 
