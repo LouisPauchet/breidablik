@@ -1,25 +1,6 @@
 <template>
-  <div>
-    <PageHeader title="Tasks" />
-
-    <p v-if="!tasks.tasks.length" class="muted">No tasks yet.</p>
-    <ul class="task-list">
-      <li v-for="task in tasks.tasks" :key="task.id" class="task-row">
-        <label class="done-toggle" @click.stop>
-          <input type="checkbox" :checked="task.is_done" @change="onToggle(task.id)" />
-        </label>
-        <NuxtLink :to="`/tasks/${task.id}`" class="task-body">
-          <span :class="{ done: task.is_done }">{{ task.title }}</span>
-          <div class="task-meta">
-            <span v-if="task.due_date">Due {{ formatDate(task.due_date) }}</span>
-            <span>{{ task.assignee_user_ids.map((id) => members.nameOf(id)).join(', ') }}</span>
-          </div>
-        </NuxtLink>
-        <button type="button" class="delete-btn" @click="onDelete(task.id)">Delete</button>
-      </li>
-    </ul>
-
-    <h2>New task</h2>
+  <div v-if="task">
+    <PageHeader title="Edit task" back="/tasks" />
     <form class="card" @submit.prevent="submit">
       <label>
         Title
@@ -52,28 +33,33 @@
 
       <p v-if="error" class="error">{{ error }}</p>
       <button type="submit" class="submit-btn" :disabled="loading || !selectedIds.length">
-        Add task
+        Save changes
       </button>
     </form>
   </div>
 </template>
 
 <script setup lang="ts">
+const route = useRoute()
+const router = useRouter()
 const tasks = useTasksStore()
 const members = useMembersStore()
 
+const taskId = route.params.id as string
+
 await Promise.all([members.ensureLoaded(), tasks.fetchTasks()])
 
-const title = ref('')
-const description = ref('')
-const dueDate = ref('')
-const selectedIds = ref<string[]>([])
+const task = computed(() => tasks.tasks.find((t) => t.id === taskId) ?? null)
+if (!task.value) {
+  await router.replace('/tasks')
+}
+
+const title = ref(task.value?.title ?? '')
+const description = ref(task.value?.description ?? '')
+const dueDate = ref(task.value?.due_date ?? '')
+const selectedIds = ref<string[]>(task.value?.assignee_user_ids ?? [])
 const loading = ref(false)
 const error = ref('')
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-}
 
 function toggleMember(id: string) {
   const idx = selectedIds.value.indexOf(id)
@@ -81,30 +67,19 @@ function toggleMember(id: string) {
   else selectedIds.value.splice(idx, 1)
 }
 
-async function onToggle(taskId: string) {
-  await tasks.toggleDone(taskId)
-}
-
-async function onDelete(taskId: string) {
-  await tasks.deleteTask(taskId)
-}
-
 async function submit() {
   error.value = ''
   loading.value = true
   try {
-    await tasks.createTask({
+    await tasks.updateTask(taskId, {
       title: title.value,
       description: description.value || null,
       due_date: dueDate.value || null,
       assignee_user_ids: selectedIds.value,
     })
-    title.value = ''
-    description.value = ''
-    dueDate.value = ''
-    selectedIds.value = []
+    await router.push('/tasks')
   } catch {
-    error.value = 'Could not add that task — check the fields and try again.'
+    error.value = 'Could not save changes. Check the fields and try again.'
   } finally {
     loading.value = false
   }
@@ -112,64 +87,6 @@ async function submit() {
 </script>
 
 <style scoped>
-.muted {
-  color: var(--muted);
-}
-
-.task-list {
-  list-style: none;
-  padding: 0;
-  margin: 0 0 1.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.task-row {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  border: 1px solid var(--border);
-  border-radius: 0.6rem;
-  padding: 0.7rem;
-  font-size: 0.9rem;
-}
-
-.done-toggle {
-  display: flex;
-  align-items: center;
-}
-
-.task-body {
-  flex: 1;
-  min-width: 0;
-  display: block;
-  color: var(--fg);
-  text-decoration: none;
-}
-
-.task-body span.done {
-  text-decoration: line-through;
-  color: var(--muted);
-}
-
-.task-meta {
-  display: flex;
-  gap: 0.5rem;
-  font-size: 0.75rem;
-  color: var(--muted);
-  margin-top: 0.15rem;
-}
-
-.delete-btn {
-  padding: 0.3rem 0.6rem;
-  border-radius: 0.4rem;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: #dc2626;
-  font-size: 0.8rem;
-}
-
 .card {
   display: flex;
   flex-direction: column;

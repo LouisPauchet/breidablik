@@ -18,6 +18,13 @@ export interface TaskCreatePayload {
   assignee_user_ids: string[]
 }
 
+export interface TaskUpdatePayload {
+  title?: string
+  description?: string | null
+  due_date?: string | null
+  assignee_user_ids?: string[]
+}
+
 export const useTasksStore = defineStore('tasks', {
   state: () => ({
     tasks: [] as Task[],
@@ -31,6 +38,14 @@ export const useTasksStore = defineStore('tasks', {
       const created = await $fetch<Task>('/api/tasks', { method: 'POST', body: payload })
       await this.fetchTasks()
       return created
+    },
+
+    async updateTask(taskId: string, payload: TaskUpdatePayload) {
+      const updated = await $fetch<Task>(`/api/tasks/${taskId}`, { method: 'PATCH', body: payload })
+      // Re-fetch rather than patch in place: editing due_date changes the server-side sort
+      // order (soonest due date first), not just this one row's fields.
+      await this.fetchTasks()
+      return updated
     },
 
     async toggleDone(taskId: string) {
