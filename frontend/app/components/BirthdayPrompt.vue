@@ -33,6 +33,13 @@ const todayIso = new Date().toISOString().slice(0, 10)
 
 const show = computed(() => !!authStore.user && !authStore.user.birthday && !dismissed.value)
 
+// Other first-run prompts (e.g. NotificationPrompt) wait for this one to be out of the way
+// rather than stacking two overlays at once.
+const anyBlockingPromptOpen = useState<boolean>('blockingPromptOpen', () => false)
+watchEffect(() => {
+  anyBlockingPromptOpen.value = show.value
+})
+
 async function onSave() {
   error.value = ''
   loading.value = true

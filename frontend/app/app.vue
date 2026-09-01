@@ -5,6 +5,7 @@
     </main>
     <BottomNav v-if="authStore.user" />
     <BirthdayPrompt />
+    <NotificationPrompt />
   </div>
 </template>
 
