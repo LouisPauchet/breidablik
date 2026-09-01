@@ -189,9 +189,16 @@
     <h2>Household dashboard</h2>
     <div class="card">
       <p class="muted">
-        Open this link on a shared screen (a kitchen tablet, a TV) to show who's on duty, the
-        calendar, and recent activity — no login needed there.
+        Open this link on a shared screen (a kitchen tablet, a TV) to show who's on duty, a
+        "coming up" list, and recent activity — no login needed there.
       </p>
+      <p class="muted small">Show in "Coming up":</p>
+      <div class="dashboard-kinds">
+        <label v-for="kind in DASHBOARD_KIND_OPTIONS" :key="kind.value" class="kind-toggle">
+          <input type="checkbox" v-model="dashboardShowKinds[kind.value]" />
+          {{ kind.label }}
+        </label>
+      </div>
       <div class="feed-row">
         <input :value="dashboardUrl" readonly @focus="($event.target as HTMLInputElement).select()" />
         <button type="button" @click="onCopyDashboardUrl">{{ dashboardCopied ? 'Copied!' : 'Copy' }}</button>
@@ -237,6 +244,24 @@ const copied = ref(false)
 const appVersion = ref('')
 const dashboardToken = ref('')
 const dashboardCopied = ref(false)
+
+const DASHBOARD_KIND_OPTIONS = [
+  { value: 'event', label: 'Events' },
+  { value: 'birthday', label: 'Birthdays' },
+  { value: 'away', label: 'Away' },
+  { value: 'task', label: 'Tasks' },
+  { value: 'duty', label: 'Duties' },
+] as const
+
+// Duties recur often enough (daily/weekly per duty) to dominate a short agenda list — off by
+// default so the shared screen leads with the things worth a household actually noticing.
+const dashboardShowKinds = reactive<Record<string, boolean>>({
+  event: true,
+  birthday: true,
+  away: true,
+  task: true,
+  duty: false,
+})
 
 $fetch<{ version: string }>('/api/version')
   .then((res) => (appVersion.value = res.version))
@@ -379,7 +404,8 @@ async function onRegenerateFeed() {
 
 const dashboardUrl = computed(() => {
   if (!dashboardToken.value || typeof window === 'undefined') return ''
-  return `${window.location.origin}/dashboard/${dashboardToken.value}`
+  const shown = DASHBOARD_KIND_OPTIONS.map((k) => k.value).filter((k) => dashboardShowKinds[k])
+  return `${window.location.origin}/dashboard/${dashboardToken.value}?show=${shown.join(',')}`
 })
 
 async function onCopyDashboardUrl() {
@@ -591,6 +617,24 @@ async function onForgetDevice() {
 .error {
   color: #dc2626;
   font-size: 0.85rem;
+}
+
+.dashboard-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.kind-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+}
+
+.kind-toggle input {
+  width: auto;
 }
 
 .feed-row {

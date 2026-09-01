@@ -36,9 +36,9 @@
 
         <section class="panel">
           <h2>Coming up</h2>
-          <p v-if="!data.upcoming.length" class="muted">Nothing in the next few days.</p>
+          <p v-if="!visibleUpcoming.length" class="muted">Nothing in the next few days.</p>
           <ul class="agenda-list">
-            <li v-for="entry in data.upcoming" :key="entry.key">
+            <li v-for="entry in visibleUpcoming" :key="entry.key">
               <span class="dot" :class="entry.kind" />
               <div class="agenda-text">
                 <strong>{{ entry.title }}</strong>
@@ -106,8 +106,21 @@ interface DashboardData {
 const route = useRoute()
 const token = route.params.token as string
 
+// Which kinds of "Coming up" entries this particular screen wants — chosen on the Profile
+// page when the link was copied and encoded right into the URL (?show=event,birthday,...),
+// so different shared screens can show different things without any server-side state.
+// Duties are left out of the default since they recur often enough (daily/weekly, per duty)
+// to dominate a short agenda list otherwise.
+const DEFAULT_SHOWN_KINDS = ['event', 'birthday', 'away', 'task']
+const showParam = route.query.show
+const shownKinds = new Set(
+  typeof showParam === 'string' && showParam.length > 0 ? showParam.split(',') : DEFAULT_SHOWN_KINDS
+)
+
 const data = ref<DashboardData | null>(null)
 const loadError = ref(false)
+
+const visibleUpcoming = computed(() => data.value?.upcoming.filter((e) => shownKinds.has(e.kind)) ?? [])
 
 const REFRESH_INTERVAL_MS = 5 * 60 * 1000
 let refreshTimer: ReturnType<typeof setInterval> | undefined
