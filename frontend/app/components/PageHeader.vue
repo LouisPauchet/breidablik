@@ -1,11 +1,11 @@
 <template>
   <header class="page-header">
     <div class="left">
-      <NuxtLink v-if="back" :to="back" class="back-btn" aria-label="Back">
+      <button v-if="back" type="button" class="back-btn" aria-label="Back" @click="onBack">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
           <path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
         </svg>
-      </NuxtLink>
+      </button>
       <h1>{{ title }}</h1>
     </div>
     <div class="actions">
@@ -15,10 +15,23 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{
+const props = defineProps<{
   title: string
+  // Fallback destination used only when there's no actual in-app history to go back to
+  // (e.g. this page was opened directly, or is the first screen visited this session) —
+  // otherwise back navigates to wherever the user actually came from.
   back?: string
 }>()
+
+const router = useRouter()
+
+function onBack() {
+  if (typeof window !== 'undefined' && window.history.state?.back) {
+    router.back()
+  } else if (props.back) {
+    router.push(props.back)
+  }
+}
 </script>
 
 <style scoped>
@@ -60,6 +73,8 @@ h1 {
   width: 2.25rem;
   height: 2.25rem;
   margin-left: -0.4rem;
+  border: none;
+  background: none;
   border-radius: 999px;
   color: var(--link);
   flex-shrink: 0;
