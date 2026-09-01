@@ -4,13 +4,14 @@ team overview endpoint (app/routers/duty_teams.py).
 """
 
 import uuid
-from datetime import date
+from datetime import date, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.duty import Duty, DutyOverride, DutyTeam
+from app.models.duty import Duty, DutyOccurrence, DutyOverride, DutyTeam
+from app.services.occurrences import DEFAULT_HORIZON_DAYS, ensure_occurrences_materialized
 from app.services.rotation import (
     compute_period_index,
     overrides_by_period_index,
@@ -61,3 +62,24 @@ async def resolve_all_current_assignments(
             ordered_members, duty_index, period_index, overrides_by_period
         )
     return assignments
+
+
+async def redispatch_team_occurrences(session: AsyncSession, team: DutyTeam) -> None:
+    """Called whenever a team's membership changes (add/remove/reorder) so the new roster
+    takes effect right away instead of only once the rolling materialization horizon —
+    already generated under the old roster — eventually runs past it. Only clears
+    occurrences that are still pending and haven't been manually swapped: a completed
+    occurrence is history, and a manual swap (e.g. someone covering an absence) reflects a
+    deliberate decision that a membership change shouldn't silently undo.
+    """
+    horizon = today() + timedelta(days=DEFAULT_HORIZON_DAYS)
+    for duty in team.duties:
+        await session.execute(
+            delete(DutyOccurrence).where(
+                DutyOccurrence.duty_id == duty.id,
+                DutyOccurrence.is_done.is_(False),
+                DutyOccurrence.is_manual_override.is_(False),
+            )
+        )
+        await session.flush()
+        await ensure_occurrences_materialized(session, duty, horizon)

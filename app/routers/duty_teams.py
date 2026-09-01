@@ -16,7 +16,7 @@ from app.schemas.duty import (
     TeamAssignmentOut,
     TeamPeriodOut,
 )
-from app.services.duty_teams import resolve_all_current_assignments
+from app.services.duty_teams import redispatch_team_occurrences, resolve_all_current_assignments
 from app.services.rotation import compute_period_index, period_bounds
 from app.timeutils import today
 
@@ -120,6 +120,9 @@ async def update_duty_team(
             session.add(DutyTeamMember(team_id=team_id, user_id=user_id, order_index=index))
         await session.commit()
         await session.refresh(team, attribute_names=["members"])
+        # Bring the new roster into the chore wheel immediately rather than waiting for the
+        # already-materialized (under the old roster) horizon to run out on its own.
+        await redispatch_team_occurrences(session, team)
     else:
         await session.commit()
 
