@@ -53,7 +53,13 @@ def log(message: str) -> None:
 def read_local_version(app_dir: Path) -> str:
     import tomllib
 
-    with (app_dir / "pyproject.toml").open("rb") as f:
+    pyproject_path = app_dir / "pyproject.toml"
+    if not pyproject_path.is_file():
+        # No release has ever been installed here yet (a brand-new --app-dir) — treat that as
+        # "older than anything published" so the very first run bootstraps the deploy instead
+        # of crashing before it gets the chance to.
+        return "0.0.0"
+    with pyproject_path.open("rb") as f:
         data = tomllib.load(f)
     return data["project"]["version"]
 
