@@ -24,6 +24,7 @@ from app.routers.shopping import router as shopping_router
 from app.routers.tasks import router as tasks_router
 from app.schemas.user import UserRead, UserUpdate
 from app.services.reminders import run_all_reminders
+from app.version import get_version
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -82,6 +83,11 @@ app.include_router(
 @app.get("/api/health")
 async def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/api/version")
+async def version() -> dict:
+    return {"version": get_version()}
 
 
 frontend_dist = Path(settings.frontend_dist_dir)

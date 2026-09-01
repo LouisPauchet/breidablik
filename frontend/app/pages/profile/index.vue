@@ -137,6 +137,8 @@
     <NuxtLink v-if="authStore.user?.is_superuser" to="/admin/members" class="admin-link">
       Manage members &rarr;
     </NuxtLink>
+
+    <p v-if="appVersion" class="version-footer">Breidablik v{{ appVersion }}</p>
   </div>
 </template>
 
@@ -165,6 +167,11 @@ const subscribed = ref(false)
 const pushError = ref('')
 const notifications = ref<NotificationItem[]>([])
 const copied = ref(false)
+const appVersion = ref('')
+
+$fetch<{ version: string }>('/api/version')
+  .then((res) => (appVersion.value = res.version))
+  .catch(() => {})
 
 const todayIso = new Date().toISOString().slice(0, 10)
 const birthdayDraft = ref(authStore.user?.birthday ?? '')
@@ -530,5 +537,12 @@ async function onForgetDevice() {
   text-decoration: none;
   margin-top: 1rem;
   font-size: 0.9rem;
+}
+
+.version-footer {
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.75rem;
+  margin: 2rem 0 0.5rem;
 }
 </style>
