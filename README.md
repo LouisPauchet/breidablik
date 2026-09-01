@@ -87,18 +87,23 @@ There's no Docker on shared hosting, so:
 ## Releases and updating Passenger
 
 `.github/workflows/ci.yml` runs the backend test suite and a frontend build check on every
-push/PR. `.github/workflows/release.yml` cuts a release: push a version tag matching the
-`[project].version` already committed in `pyproject.toml` (bump that first, commit, then tag —
-the workflow fails the release if they don't match):
+push/PR. Releases are handled by [release-please](https://github.com/googleapis/release-please)
+(`.github/workflows/release-please.yml`, configured by `release-please-config.json` /
+`.release-please-manifest.json`): it watches `master` and keeps a "release PR" up to date —
+bumping `pyproject.toml`'s version and drafting `CHANGELOG.md` — from
+[Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `feat!:`/
+`BREAKING CHANGE:` for a major bump, etc.) merged since the last release. **Merging that PR is
+the release** — release-please creates the version tag and GitHub Release itself, which
+triggers a second job in the same workflow to build the frontend, re-run the tests, and attach
+a `breidablik-release.tar.gz` asset (containing `app/`, `pyproject.toml`, `passenger_wsgi.py`,
+`alembic.ini`, the prebuilt `frontend/.output/` — everything Passenger needs) to that release.
 
-```bash
-git tag v0.2.0
-git push origin v0.2.0
-```
-
-That builds the frontend, re-runs the tests, and publishes a GitHub Release with a
-`breidablik-release.tar.gz` asset containing everything Passenger needs (`app/`,
-`pyproject.toml`, `passenger_wsgi.py`, `alembic.ini`, the prebuilt `frontend/.output/`).
+Only two things are needed for the PR-opening step to work: `pull-requests: write` /
+`contents: write` are already granted in the workflow file, but the repo also needs **Settings
+→ Actions → General → Workflow permissions → "Allow GitHub Actions to create and approve pull
+requests"** turned on (a one-time setting, off by default); and every commit that should show
+up in a release needs a Conventional Commits prefix — anything else is silently excluded from
+both the changelog and the version-bump decision.
 
 Since a shared host can't watch GitHub on its own, `scripts/passenger_update.py` is a
 dependency-free script that does it from the other end — point a cron job at it (hourly or
