@@ -66,8 +66,15 @@ export const useAuthStore = defineStore('auth', {
     },
 
     async uploadAvatar(file: File) {
+      let upload: Blob = file
+      try {
+        upload = await resizeImageFile(file)
+      } catch {
+        // Fall back to the original file rather than blocking the upload outright — the
+        // server's own size/type checks still apply either way.
+      }
       const form = new FormData()
-      form.append('file', file)
+      form.append('file', upload, 'avatar.jpg')
       const res = await $fetch<{ avatar_updated_at: string }>('/api/users/me/avatar', {
         method: 'POST',
         body: form,
