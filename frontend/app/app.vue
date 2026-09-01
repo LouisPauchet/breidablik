@@ -13,6 +13,34 @@
 // Auth state is bootstrapped by app/middleware/auth.global.ts before any page renders,
 // not here — avoids two independent code paths racing to initialize the same store.
 const authStore = useAuthStore()
+
+// This app redeploys often (see scripts/passenger_update.py). A session left open across a
+// deploy is still running the old JS bundle, and its next in-app navigation can try to fetch
+// a chunk file that no longer exists on the server (the static build only ever keeps the
+// latest hashed files) — Nuxt's fallback for that is a hard reload mid-click. On an iOS
+// home-screen PWA, a hard reload is exactly what breaks it out of standalone mode into
+// Safari's browser chrome. Proactively reloading here instead — at app-open and whenever the
+// app comes back to the foreground, never mid-interaction — means the fresh bundle is
+// already in place before the user clicks anything, so that fallback shouldn't get a chance
+// to fire in normal use.
+onMounted(() => {
+  if (!('serviceWorker' in navigator)) return
+
+  let reloaded = false
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloaded) return
+    reloaded = true
+    window.location.reload()
+  })
+
+  const checkForUpdate = () => {
+    navigator.serviceWorker.getRegistration().then((registration) => registration?.update())
+  }
+  checkForUpdate()
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') checkForUpdate()
+  })
+})
 </script>
 
 <style>
