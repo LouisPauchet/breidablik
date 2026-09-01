@@ -2,6 +2,11 @@
   <div>
     <PageHeader :title="`Hi ${authStore.user?.display_name}`" />
 
+    <blockquote v-if="quote" class="quote">
+      <p>&ldquo;{{ quote.text }}&rdquo;</p>
+      <cite>&mdash; {{ quote.author }}</cite>
+    </blockquote>
+
     <h2>Your duties</h2>
     <p v-if="!myDuties.length" class="muted">Nothing on your plate right now.</p>
     <ul class="widget-list highlight">
@@ -33,12 +38,25 @@
 </template>
 
 <script setup lang="ts">
+interface Quote {
+  text: string
+  author: string
+}
+
 const authStore = useAuthStore()
 const duties = useDutiesStore()
 const members = useMembersStore()
 const router = useRouter()
 
-await Promise.all([members.ensureLoaded(), duties.fetchOnDutyToday()])
+const quote = ref<Quote | null>(null)
+
+await Promise.all([
+  members.ensureLoaded(),
+  duties.fetchOnDutyToday(),
+  $fetch<Quote>('/api/quote-of-the-day')
+    .then((res) => (quote.value = res))
+    .catch(() => {}),
+])
 
 const myDuties = computed(() =>
   duties.onDutyToday.filter((entry) => entry.assignee_user_id === authStore.user?.id)
@@ -52,6 +70,25 @@ async function handleLogout() {
 
 <style scoped>
 .muted {
+  color: var(--muted);
+}
+
+.quote {
+  margin: 0 0 1.5rem;
+  padding: 1rem 1.1rem;
+  border-left: 3px solid var(--accent);
+  font-style: italic;
+}
+
+.quote p {
+  margin: 0;
+}
+
+.quote cite {
+  display: block;
+  margin-top: 0.4rem;
+  font-style: normal;
+  font-size: 0.85rem;
   color: var(--muted);
 }
 

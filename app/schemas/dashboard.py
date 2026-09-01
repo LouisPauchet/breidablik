@@ -3,14 +3,11 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from app.schemas.quote import QuoteOut
+
 
 class DashboardTokenOut(BaseModel):
     token: str
-
-
-class DashboardQuoteOut(BaseModel):
-    text: str
-    author: str
 
 
 class DashboardOnDutyOut(BaseModel):
@@ -36,7 +33,7 @@ class DashboardActivityEntryOut(BaseModel):
 
 class DashboardOut(BaseModel):
     generated_at: datetime
-    quote: DashboardQuoteOut
+    quote: QuoteOut
     on_duty_today: list[DashboardOnDutyOut]
     upcoming: list[DashboardAgendaEntryOut]
     activity: list[DashboardActivityEntryOut]

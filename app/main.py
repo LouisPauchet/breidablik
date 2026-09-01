@@ -22,6 +22,7 @@ from app.routers.events import router as events_router
 from app.routers.internal import router as internal_router
 from app.routers.members import router as members_router
 from app.routers.notifications import router as notifications_router
+from app.routers.quotes import router as quotes_router
 from app.routers.shopping import router as shopping_router
 from app.routers.tasks import router as tasks_router
 from app.schemas.user import UserRead, UserUpdate
@@ -75,6 +76,7 @@ app.include_router(tasks_router)
 app.include_router(events_router)
 app.include_router(shopping_router)
 app.include_router(notifications_router)
+app.include_router(quotes_router)
 app.include_router(calendar_feed_router)
 app.include_router(internal_router)
 app.include_router(
