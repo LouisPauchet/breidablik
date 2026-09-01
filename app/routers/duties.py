@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -161,9 +161,14 @@ async def on_duty_today(session: AsyncSession = Depends(get_session)):
 
 
 @router.get("/occurrences/upcoming", response_model=list[UpcomingOccurrenceOut])
-async def upcoming_occurrences(session: AsyncSession = Depends(get_session)):
+async def upcoming_occurrences(
+    horizon_days: int = Query(DEFAULT_HORIZON_DAYS, gt=0, le=730),
+    session: AsyncSession = Depends(get_session),
+):
     """Flat, cross-duty feed for the combined calendar view — materializes every active
-    duty's occurrences up to the same rolling horizon the per-duty detail view uses.
+    duty's occurrences up to `horizon_days` out (defaulting to the same rolling horizon the
+    per-duty detail view uses). The calendar's month/week grid passes a larger value when
+    the visible range extends further out than that default.
     """
     result = await session.execute(
         select(Duty)
@@ -172,7 +177,7 @@ async def upcoming_occurrences(session: AsyncSession = Depends(get_session)):
     )
     duties = result.scalars().unique().all()
 
-    horizon = today() + timedelta(days=DEFAULT_HORIZON_DAYS)
+    horizon = today() + timedelta(days=horizon_days)
     for duty in duties:
         await ensure_occurrences_materialized(session, duty, horizon)
 
