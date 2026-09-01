@@ -6,6 +6,7 @@ export interface AuthUser {
   is_superuser: boolean
   calendar_feed_token: string
   birthday: string | null
+  avatar_updated_at: string | null
 }
 
 interface LoginResult {
@@ -62,6 +63,21 @@ export const useAuthStore = defineStore('auth', {
         body: { birthday },
       })
       if (this.user) this.user.birthday = updated.birthday
+    },
+
+    async uploadAvatar(file: File) {
+      const form = new FormData()
+      form.append('file', file)
+      const res = await $fetch<{ avatar_updated_at: string }>('/api/users/me/avatar', {
+        method: 'POST',
+        body: form,
+      })
+      if (this.user) this.user.avatar_updated_at = res.avatar_updated_at
+    },
+
+    async removeAvatar() {
+      await $fetch('/api/users/me/avatar', { method: 'DELETE' })
+      if (this.user) this.user.avatar_updated_at = null
     },
 
     async logout() {

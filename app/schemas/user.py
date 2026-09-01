@@ -1,5 +1,5 @@
 import uuid
-from datetime import date
+from datetime import date, datetime
 
 from fastapi_users import schemas
 
@@ -8,6 +8,7 @@ class UserRead(schemas.BaseUser[uuid.UUID]):
     display_name: str
     is_2fa_enabled: bool
     birthday: date | None
+    avatar_updated_at: datetime | None
 
 
 class UserCreate(schemas.BaseUserCreate):

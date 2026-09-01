@@ -15,7 +15,14 @@
             <span v-if="duty.team_id" class="badge">{{ teams.nameOf(duty.team_id) }}</span>
           </div>
           <div class="duty-meta">
-            On duty: <strong>{{ members.nameOf(duty.current_period.assignee_user_id) }}</strong>
+            On duty:
+            <Avatar
+              :user-id="duty.current_period.assignee_user_id"
+              :name="members.nameOf(duty.current_period.assignee_user_id)"
+              :avatar-updated-at="members.avatarUpdatedAtOf(duty.current_period.assignee_user_id)"
+              :size="20"
+            />
+            <strong>{{ members.nameOf(duty.current_period.assignee_user_id) }}</strong>
             until {{ formatDate(duty.current_period.end_date) }}
           </div>
         </NuxtLink>
@@ -96,5 +103,9 @@ function formatDate(iso: string) {
 .duty-meta {
   font-size: 0.85rem;
   color: var(--muted);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
 }
 </style>

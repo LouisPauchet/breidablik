@@ -20,8 +20,15 @@
           <strong>{{ duty.assignees.map((a) => members.nameOf(a.user_id)).join(' -> ') }}</strong>
         </div>
       </template>
-      <div>
-        Currently on duty: <strong>{{ members.nameOf(duty.current_period.assignee_user_id) }}</strong>
+      <div class="current-assignee">
+        Currently on duty:
+        <Avatar
+          :user-id="duty.current_period.assignee_user_id"
+          :name="members.nameOf(duty.current_period.assignee_user_id)"
+          :avatar-updated-at="members.avatarUpdatedAtOf(duty.current_period.assignee_user_id)"
+          :size="24"
+        />
+        <strong>{{ members.nameOf(duty.current_period.assignee_user_id) }}</strong>
         (until {{ formatDate(duty.current_period.end_date) }})
       </div>
     </div>
@@ -113,6 +120,13 @@ async function onDelete() {
 
 .info-card a {
   color: var(--link);
+}
+
+.current-assignee {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
 }
 
 .occurrence-list {

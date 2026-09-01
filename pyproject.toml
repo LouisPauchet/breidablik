@@ -17,6 +17,8 @@ dependencies = [
     "icalendar>=6.1",
     "apscheduler>=3.10",
     "a2wsgi>=1.10",
+    "pillow>=11.0",
+    "python-multipart>=0.0.12",
 ]
 
 [project.optional-dependencies]

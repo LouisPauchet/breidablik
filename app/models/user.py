@@ -33,6 +33,11 @@ class User(SQLAlchemyBaseUserTableUUID, Base):
         String(64), unique=True, index=True, default=lambda: secrets.token_urlsafe(32)
     )
 
+    # No column stores the image itself — it lives on disk under settings.avatar_storage_dir,
+    # named by user id (see app/services/avatars.py). None here means "no avatar uploaded";
+    # otherwise this doubles as a cache-busting value for the serving URL.
+    avatar_updated_at: Mapped[datetime | None] = mapped_column(default=None)
+
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     device_trusts: Mapped[list["DeviceTrust"]] = relationship(

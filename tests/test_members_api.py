@@ -11,7 +11,9 @@ async def test_list_members_returns_display_names(client, alice):
     resp = await client.get("/api/members")
     assert resp.status_code == 200
     body = resp.json()
-    assert body == [{"id": str(alice.id), "display_name": "Alice", "birthday": None}]
+    assert body == [
+        {"id": str(alice.id), "display_name": "Alice", "birthday": None, "avatar_updated_at": None}
+    ]
 
 
 async def test_list_members_includes_birthday_once_set(client, alice):

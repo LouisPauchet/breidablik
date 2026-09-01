@@ -3,6 +3,33 @@
     <PageHeader title="Profile" />
     <p class="muted">{{ authStore.user?.display_name }} &middot; {{ authStore.user?.email }}</p>
 
+    <h2>Photo</h2>
+    <div class="card photo-card">
+      <Avatar
+        v-if="authStore.user"
+        :user-id="authStore.user.id"
+        :name="authStore.user.display_name"
+        :avatar-updated-at="authStore.user.avatar_updated_at"
+        :size="80"
+      />
+      <div class="photo-actions">
+        <label class="upload-btn">
+          {{ avatarLoading ? 'Uploading…' : 'Upload photo' }}
+          <input type="file" accept="image/png,image/jpeg,image/webp" hidden @change="onAvatarChange" />
+        </label>
+        <button
+          v-if="authStore.user?.avatar_updated_at"
+          type="button"
+          class="link-btn"
+          :disabled="avatarLoading"
+          @click="onRemoveAvatar"
+        >
+          Remove photo
+        </button>
+      </div>
+    </div>
+    <p v-if="avatarError" class="error">{{ avatarError }}</p>
+
     <h2>Birthday</h2>
     <div class="card">
       <label>
@@ -177,6 +204,37 @@ const todayIso = new Date().toISOString().slice(0, 10)
 const birthdayDraft = ref(authStore.user?.birthday ?? '')
 const birthdayError = ref('')
 
+const avatarLoading = ref(false)
+const avatarError = ref('')
+
+async function onAvatarChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  avatarError.value = ''
+  avatarLoading.value = true
+  try {
+    await authStore.uploadAvatar(file)
+  } catch {
+    avatarError.value = 'Could not upload that photo — try a smaller JPEG/PNG/WebP file.'
+  } finally {
+    avatarLoading.value = false
+    input.value = ''
+  }
+}
+
+async function onRemoveAvatar() {
+  avatarError.value = ''
+  avatarLoading.value = true
+  try {
+    await authStore.removeAvatar()
+  } catch {
+    avatarError.value = 'Could not remove the photo — try again.'
+  } finally {
+    avatarLoading.value = false
+  }
+}
+
 const totpStep = ref<'idle' | 'enrolling' | 'recovery-codes'>('idle')
 const totpQrDataUri = ref('')
 const totpSecret = ref('')
@@ -344,6 +402,30 @@ async function onForgetDevice() {
 
 .card h3 {
   margin-top: 0;
+}
+
+.photo-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.photo-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  align-items: flex-start;
+}
+
+.upload-btn {
+  display: inline-block;
+  padding: 0.5rem 0.9rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 0.9rem;
+  cursor: pointer;
 }
 
 .card label {

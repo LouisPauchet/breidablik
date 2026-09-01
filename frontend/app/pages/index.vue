@@ -16,8 +16,14 @@
     <p v-if="!duties.onDutyToday.length" class="muted">No active duties yet.</p>
     <ul class="widget-list">
       <li v-for="entry in duties.onDutyToday" :key="entry.duty_id">
-        <NuxtLink :to="`/duties/${entry.duty_id}`">
-          <strong>{{ entry.duty_title }}</strong> — {{ members.nameOf(entry.assignee_user_id) }}
+        <NuxtLink :to="`/duties/${entry.duty_id}`" class="duty-row">
+          <Avatar
+            :user-id="entry.assignee_user_id"
+            :name="members.nameOf(entry.assignee_user_id)"
+            :avatar-updated-at="members.avatarUpdatedAtOf(entry.assignee_user_id)"
+            :size="28"
+          />
+          <span><strong>{{ entry.duty_title }}</strong> — {{ members.nameOf(entry.assignee_user_id) }}</span>
         </NuxtLink>
       </li>
     </ul>
@@ -70,6 +76,12 @@ async function handleLogout() {
 .widget-list.highlight a {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
   border-color: var(--accent);
+}
+
+.widget-list a.duty-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
 }
 
 button {

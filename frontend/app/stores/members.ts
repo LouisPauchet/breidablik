@@ -2,6 +2,7 @@ export interface Member {
   id: string
   display_name: string
   birthday: string | null
+  avatar_updated_at: string | null
 }
 
 export const useMembersStore = defineStore('members', {
@@ -12,6 +13,8 @@ export const useMembersStore = defineStore('members', {
   getters: {
     nameOf: (state) => (userId: string) =>
       state.members.find((m) => m.id === userId)?.display_name ?? 'Unknown',
+    avatarUpdatedAtOf: (state) => (userId: string) =>
+      state.members.find((m) => m.id === userId)?.avatar_updated_at ?? null,
   },
   actions: {
     async ensureLoaded() {

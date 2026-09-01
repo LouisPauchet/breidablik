@@ -26,7 +26,13 @@
 
     <ul class="rsvp-summary">
       <li v-for="row in rsvpByMember" :key="row.userId" :class="{ pending: !row.status }">
-        {{ row.name }}: <strong>{{ row.status ?? 'no response yet' }}</strong>
+        <Avatar
+          :user-id="row.userId"
+          :name="row.name"
+          :avatar-updated-at="members.avatarUpdatedAtOf(row.userId)"
+          :size="28"
+        />
+        <span>{{ row.name }}: <strong>{{ row.status ?? 'no response yet' }}</strong></span>
       </li>
     </ul>
 
@@ -154,6 +160,15 @@ async function onDelete() {
   margin: 0 0 1.5rem;
   font-size: 0.9rem;
   color: var(--fg);
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.rsvp-summary li {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
 }
 
 .rsvp-summary li.pending {

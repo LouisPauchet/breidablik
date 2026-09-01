@@ -6,7 +6,7 @@ everyone else in the collective.
 """
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
@@ -24,6 +24,7 @@ class MemberOut(BaseModel):
     id: uuid.UUID
     display_name: str
     birthday: date | None
+    avatar_updated_at: datetime | None
 
 
 @router.get("", response_model=list[MemberOut])

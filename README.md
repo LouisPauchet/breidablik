@@ -130,6 +130,10 @@ real deployment: `SECRET_KEY` (long random string), `DATABASE_URL`, `VAPID_PUBLI
 the one-liner), `VAPID_CLAIM_EMAIL`, and `CRON_SECRET`. Set `COOKIE_SECURE=false` only for
 local plain-http development — browsers refuse to set a `Secure` cookie over http.
 
+`AVATAR_STORAGE_DIR` (default `var/avatars`) is where uploaded profile pictures live on local
+disk, deliberately outside the deployed code tree so a Passenger update never touches them —
+point it somewhere persistent if your host's app root can be wiped/recreated.
+
 ## Auth model
 
 Registration is admin-created only (no public sign-up) — add members from Profile → Manage
@@ -143,6 +147,14 @@ Web Push requires the VAPID keys above; without them, push sending silently no-o
 everything still works via the in-app notification log on Profile (this is also the reliable
 fallback for browsers/situations where push isn't available, e.g. iOS Safari before the PWA is
 added to the home screen). Each member can subscribe from Profile → Notifications.
+
+## Profile pictures
+
+Each member can upload a photo from Profile → Photo (JPEG/PNG/WebP, auto-cropped to a square
+and resized). It shows up as a small avatar next to their name wherever a duty's current
+assignee or an event's RSVP list is displayed; anyone without a photo gets a colored
+initials circle instead. Stored as plain files under `AVATAR_STORAGE_DIR` — see Environment
+variables above.
 
 ## Calendar subscription
 

@@ -4,6 +4,12 @@
 
     <ul class="member-list">
       <li v-for="member in members" :key="member.id" class="member-row">
+        <Avatar
+          :user-id="member.id"
+          :name="member.display_name"
+          :avatar-updated-at="member.avatar_updated_at"
+          :size="40"
+        />
         <div>
           <div class="member-name">
             {{ member.display_name }}
@@ -58,6 +64,7 @@ interface Member {
   is_verified: boolean
   is_2fa_enabled: boolean
   birthday: string | null
+  avatar_updated_at: string | null
 }
 
 const authStore = useAuthStore()

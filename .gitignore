@@ -34,3 +34,7 @@ app/alembic/versions/__pycache__/
 .cache/
 *.sqlite3
 /*.db
+
+# User-uploaded profile pictures (local disk storage, see app/services/avatars.py) — must
+# survive a Passenger code update untouched, so it's never part of the repo or a release.
+/var/

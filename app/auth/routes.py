@@ -66,6 +66,7 @@ def _serialize_user(user: User) -> dict:
         "is_superuser": user.is_superuser,
         "calendar_feed_token": user.calendar_feed_token,
         "birthday": user.birthday.isoformat() if user.birthday else None,
+        "avatar_updated_at": user.avatar_updated_at.isoformat() if user.avatar_updated_at else None,
     }
 
 

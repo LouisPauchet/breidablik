@@ -25,6 +25,11 @@ class Settings(BaseSettings):
 
     frontend_dist_dir: str = "frontend/.output/public"
 
+    # Deliberately outside the deployed code tree by convention (see README) so a Passenger
+    # code update never touches uploaded photos — the updater script only overlays code.
+    avatar_storage_dir: str = "var/avatars"
+    avatar_max_upload_bytes: int = 5 * 1024 * 1024
+
     @property
     def zone_info(self) -> ZoneInfo:
         return ZoneInfo(self.timezone)
