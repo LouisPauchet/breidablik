@@ -2,7 +2,17 @@
   <div>
     <PageHeader :title="`Hi ${authStore.user?.display_name}`" />
 
-    <h2>On duty today</h2>
+    <h2>Your duties</h2>
+    <p v-if="!myDuties.length" class="muted">Nothing on your plate right now.</p>
+    <ul class="widget-list highlight">
+      <li v-for="entry in myDuties" :key="entry.duty_id">
+        <NuxtLink :to="`/duties/${entry.duty_id}`">
+          <strong>{{ entry.duty_title }}</strong>
+        </NuxtLink>
+      </li>
+    </ul>
+
+    <h2>Household duties</h2>
     <p v-if="!duties.onDutyToday.length" class="muted">No active duties yet.</p>
     <ul class="widget-list">
       <li v-for="entry in duties.onDutyToday" :key="entry.duty_id">
@@ -23,6 +33,10 @@ const members = useMembersStore()
 const router = useRouter()
 
 await Promise.all([members.ensureLoaded(), duties.fetchOnDutyToday()])
+
+const myDuties = computed(() =>
+  duties.onDutyToday.filter((entry) => entry.assignee_user_id === authStore.user?.id)
+)
 
 async function handleLogout() {
   await authStore.logout()
@@ -51,6 +65,11 @@ async function handleLogout() {
   padding: 0.7rem;
   color: var(--fg);
   text-decoration: none;
+}
+
+.widget-list.highlight a {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: var(--accent);
 }
 
 button {
