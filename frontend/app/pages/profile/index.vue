@@ -186,6 +186,21 @@
       </button>
     </div>
 
+    <h2>Household dashboard</h2>
+    <div class="card">
+      <p class="muted">
+        Open this link on a shared screen (a kitchen tablet, a TV) to show who's on duty, the
+        calendar, and recent activity — no login needed there.
+      </p>
+      <div class="feed-row">
+        <input :value="dashboardUrl" readonly @focus="($event.target as HTMLInputElement).select()" />
+        <button type="button" @click="onCopyDashboardUrl">{{ dashboardCopied ? 'Copied!' : 'Copy' }}</button>
+      </div>
+      <button type="button" class="link-btn" @click="onRegenerateDashboardLink">
+        Regenerate link (if it ever leaks)
+      </button>
+    </div>
+
     <NuxtLink v-if="authStore.user?.is_superuser" to="/admin/members" class="admin-link">
       Manage members &rarr;
     </NuxtLink>
@@ -220,6 +235,8 @@ const pushError = ref('')
 const notifications = ref<NotificationItem[]>([])
 const copied = ref(false)
 const appVersion = ref('')
+const dashboardToken = ref('')
+const dashboardCopied = ref(false)
 
 $fetch<{ version: string }>('/api/version')
   .then((res) => (appVersion.value = res.version))
@@ -318,6 +335,7 @@ onMounted(async () => {
 
 notifications.value = await $fetch<NotificationItem[]>('/api/notifications')
 deviceTrust.value = await $fetch<DeviceTrustStatus>('/api/auth/device-trust/status')
+dashboardToken.value = (await $fetch<{ token: string }>('/api/dashboard/link')).token
 
 async function onTogglePush(event: Event) {
   pushError.value = ''
@@ -357,6 +375,28 @@ async function onCopyFeedUrl() {
 
 async function onRegenerateFeed() {
   await authStore.regenerateCalendarFeedToken()
+}
+
+const dashboardUrl = computed(() => {
+  if (!dashboardToken.value || typeof window === 'undefined') return ''
+  return `${window.location.origin}/dashboard/${dashboardToken.value}`
+})
+
+async function onCopyDashboardUrl() {
+  try {
+    await navigator.clipboard.writeText(dashboardUrl.value)
+    dashboardCopied.value = true
+    setTimeout(() => (dashboardCopied.value = false), 2000)
+  } catch {
+    // Clipboard API can be unavailable (e.g. insecure context) — the input is still
+    // select-on-focus, so the user can copy manually either way.
+  }
+}
+
+async function onRegenerateDashboardLink() {
+  dashboardToken.value = (
+    await $fetch<{ token: string }>('/api/dashboard/link/regenerate', { method: 'POST' })
+  ).token
 }
 
 async function onSaveBirthday() {

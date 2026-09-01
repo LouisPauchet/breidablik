@@ -1,11 +1,11 @@
 <template>
-  <div class="app-shell">
+  <div class="app-shell" :class="{ 'full-bleed': route.meta.fullBleed }">
     <main class="app-content">
       <NuxtPage />
     </main>
-    <BottomNav v-if="authStore.user" />
-    <BirthdayPrompt />
-    <NotificationPrompt />
+    <BottomNav v-if="authStore.user && !route.meta.fullBleed" />
+    <BirthdayPrompt v-if="!route.meta.fullBleed" />
+    <NotificationPrompt v-if="!route.meta.fullBleed" />
   </div>
 </template>
 
@@ -13,6 +13,11 @@
 // Auth state is bootstrapped by app/middleware/auth.global.ts before any page renders,
 // not here — avoids two independent code paths racing to initialize the same store.
 const authStore = useAuthStore()
+const route = useRoute()
+
+// The wall-display dashboard (pages/dashboard/[token].vue) is reached with no login and needs
+// the full viewport, not the app's mobile-width column/bottom-nav chrome — it sets this meta
+// flag to opt out here rather than every other page needing to know it exists.
 
 // This app redeploys often (see scripts/passenger_update.py). A session left open across a
 // deploy is still running the old JS bundle, and its next in-app navigation can try to fetch
@@ -108,6 +113,11 @@ body {
   max-width: 640px;
   margin: 0 auto;
   width: 100%;
+}
+
+.app-shell.full-bleed .app-content {
+  max-width: none;
+  padding: 0;
 }
 
 /* Native-style press feedback: buttons/links dim briefly on tap instead of

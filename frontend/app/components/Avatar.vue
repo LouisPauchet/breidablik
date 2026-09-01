@@ -12,8 +12,9 @@ const props = withDefaults(
     name: string
     avatarUpdatedAt?: string | null
     size?: number
+    srcOverride?: string | null
   }>(),
-  { size: 32, avatarUpdatedAt: null }
+  { size: 32, avatarUpdatedAt: null, srcOverride: null }
 )
 
 const failed = ref(false)
@@ -26,6 +27,7 @@ watch(
 
 const src = computed(() => {
   if (!props.avatarUpdatedAt) return null
+  if (props.srcOverride) return props.srcOverride
   return `/api/users/${props.userId}/avatar?v=${encodeURIComponent(props.avatarUpdatedAt)}`
 })
 

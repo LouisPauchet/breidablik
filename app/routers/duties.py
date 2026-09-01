@@ -24,6 +24,7 @@ from app.schemas.duty import (
     UpcomingOccurrenceOut,
 )
 from app.services.absences import is_user_away, load_active_absences_by_user
+from app.services.duty_status import build_on_duty_today
 from app.services.duty_teams import load_team_with_relations, resolve_team_duty_current_assignee
 from app.services.occurrences import DEFAULT_HORIZON_DAYS, ensure_occurrences_materialized
 from app.services.rotation import (
@@ -134,30 +135,7 @@ async def list_duties(session: AsyncSession = Depends(get_session)):
 
 @router.get("/on-duty-today", response_model=list[OnDutyTodayOut])
 async def on_duty_today(session: AsyncSession = Depends(get_session)):
-    result = await session.execute(
-        select(Duty)
-        .options(selectinload(Duty.assignees), selectinload(Duty.overrides))
-        .where(Duty.is_active.is_(True))
-    )
-    duties = result.scalars().unique().all()
-    on_date = today()
-
-    out = []
-    for duty in duties:
-        if duty.team_id is not None:
-            team = await load_team_with_relations(session, duty.team_id)
-            if team is None or not team.members:
-                continue
-            assignee_id = await resolve_team_duty_current_assignee(session, team, duty, on_date)
-        else:
-            ordered = sorted_assignees(duty.assignees)
-            if not ordered:
-                continue
-            period_index = compute_period_index(duty, on_date)
-            overrides_by_period = overrides_by_period_index(duty.overrides)
-            assignee_id = resolve_assignee_for_period(ordered, overrides_by_period, period_index)
-        out.append(OnDutyTodayOut(duty_id=duty.id, duty_title=duty.title, assignee_user_id=assignee_id))
-    return out
+    return await build_on_duty_today(session, today())
 
 
 @router.get("/occurrences/upcoming", response_model=list[UpcomingOccurrenceOut])
