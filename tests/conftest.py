@@ -1,3 +1,13 @@
+import os
+
+# Must happen before any `app.*` import below: Settings.cookie_secure defaults to True, which
+# makes the login endpoint issue a `Secure` cookie — a spec-compliant HTTP client (httpx, here
+# over the plain-http ASGI test transport) will neither store nor resend that cookie, so every
+# request after login would look unauthenticated. Locally this was masked by a real .env file
+# setting COOKIE_SECURE=false for dev; CI has no .env at all, so the whole suite failed there
+# with 401s. Forcing it here makes the suite hermetic regardless of what .env (if any) exists.
+os.environ["COOKIE_SECURE"] = "false"
+
 import pytest_asyncio
 from fastapi_users.db import SQLAlchemyUserDatabase
 from httpx import ASGITransport, AsyncClient
