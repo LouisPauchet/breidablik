@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.4.0](https://github.com/LouisPauchet/breidablik/compare/breidablik-v0.3.0...breidablik-v0.4.0) (2026-09-01)
+
+
+### Features
+
+* add a wall-display dashboard for a shared household screen ([abc0566](https://github.com/LouisPauchet/breidablik/commit/abc05669596f90defef9988239c4a23b929eb138))
+* make the dashboard's "Coming up" list configurable per link ([a374467](https://github.com/LouisPauchet/breidablik/commit/a3744675b437e6553e671f5801ef7ed2814eaac7))
+* notify the whole collective when an event is created ([7266cb0](https://github.com/LouisPauchet/breidablik/commit/7266cb0cb5da64ab433a62b1c476d14b63048da5))
+* show the quote of the day on the app home screen ([eb7175e](https://github.com/LouisPauchet/breidablik/commit/eb7175e9dbc7f130677a49fd9d048515104bd55f))
+
+
+### Bug Fixes
+
+* harden the PWA against leaving iOS standalone mode ([99e860e](https://github.com/LouisPauchet/breidablik/commit/99e860e7d066e01a2fd118688fea2b69b6e35792))
+
 ## [0.3.0](https://github.com/LouisPauchet/breidablik/compare/breidablik-v0.2.0...breidablik-v0.3.0) (2026-09-01)
 
 
