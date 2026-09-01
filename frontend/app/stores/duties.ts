@@ -67,6 +67,15 @@ export interface DutyCreatePayload {
   assignee_user_ids?: string[]
 }
 
+export interface DutyUpdatePayload {
+  title?: string
+  description?: string | null
+  task_interval_days?: number
+  team_id?: string | null
+  rotation_interval_days?: number | null
+  assignee_user_ids?: string[]
+}
+
 export const useDutiesStore = defineStore('duties', {
   state: () => ({
     duties: [] as Duty[],
@@ -92,6 +101,10 @@ export const useDutiesStore = defineStore('duties', {
 
     async createDuty(payload: DutyCreatePayload) {
       return await $fetch<Duty>('/api/duties', { method: 'POST', body: payload })
+    },
+
+    async updateDuty(id: string, payload: DutyUpdatePayload) {
+      return await $fetch<Duty>(`/api/duties/${id}`, { method: 'PATCH', body: payload })
     },
 
     async archiveDuty(id: string) {

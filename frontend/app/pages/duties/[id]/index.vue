@@ -1,6 +1,8 @@
 <template>
   <div v-if="duty">
-    <PageHeader :title="duty.title" back="/duties" />
+    <PageHeader :title="duty.title" back="/duties">
+      <NuxtLink :to="`/duties/${duty.id}/edit`" class="btn-primary">Edit</NuxtLink>
+    </PageHeader>
 
     <p v-if="duty.description" class="muted">{{ duty.description }}</p>
 
@@ -84,6 +86,16 @@ async function onDelete() {
 </script>
 
 <style scoped>
+.btn-primary {
+  background: var(--accent);
+  color: white;
+  padding: 0.4rem 0.8rem;
+  border-radius: 0.5rem;
+  text-decoration: none;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
 .muted {
   color: var(--muted);
 }
