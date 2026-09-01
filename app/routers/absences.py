@@ -9,6 +9,7 @@ from app.db import get_session
 from app.models.absence import Absence
 from app.models.user import User
 from app.schemas.absence import AbsenceCreate, AbsenceOut
+from app.services.auto_reassign import reassign_occurrences_for_absence
 
 router = APIRouter(prefix="/api/absences", tags=["absences"], dependencies=[Depends(current_active_user)])
 
@@ -26,11 +27,19 @@ async def create_absence(
     session: AsyncSession = Depends(get_session),
 ):
     absence = Absence(
-        user_id=user.id, start_date=data.start_date, end_date=data.end_date, reason=data.reason
+        user_id=user.id,
+        start_date=data.start_date,
+        end_date=data.end_date,
+        reason=data.reason,
+        auto_reassign=data.auto_reassign,
     )
     session.add(absence)
     await session.commit()
     await session.refresh(absence)
+
+    if absence.auto_reassign:
+        await reassign_occurrences_for_absence(session, absence)
+
     return absence
 
 

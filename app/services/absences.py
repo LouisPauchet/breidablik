@@ -19,6 +19,20 @@ async def load_active_absences_by_user(
     return by_user
 
 
+async def load_auto_reassign_absences_by_user(
+    session: AsyncSession, user_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, list[Absence]]:
+    if not user_ids:
+        return {}
+    result = await session.execute(
+        select(Absence).where(Absence.user_id.in_(user_ids), Absence.auto_reassign.is_(True))
+    )
+    by_user: dict[uuid.UUID, list[Absence]] = {}
+    for absence in result.scalars():
+        by_user.setdefault(absence.user_id, []).append(absence)
+    return by_user
+
+
 def is_user_away(
     absences_by_user: dict[uuid.UUID, list[Absence]], user_id: uuid.UUID, on_date: date
 ) -> bool:

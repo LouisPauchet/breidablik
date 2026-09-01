@@ -14,6 +14,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.duty import Duty, DutyAssignee, DutyOccurrence, DutyOverride, DutyTeam
+from app.services.absences import (
+    is_user_away,
+    load_active_absences_by_user,
+    load_auto_reassign_absences_by_user,
+)
+from app.services.auto_reassign import pick_reassignment
 from app.services.rotation import (
     compute_period_index,
     overrides_by_period_index,
@@ -48,6 +54,7 @@ async def ensure_occurrences_materialized(session: AsyncSession, duty: Duty, hor
         resolve_fn=lambda period_index: resolve_assignee_for_period(
             ordered_assignees, overrides_by_period, period_index
         ),
+        candidates=[a.user_id for a in ordered_assignees],
     )
 
 
@@ -77,6 +84,7 @@ async def _ensure_team_duty_occurrences_materialized(session: AsyncSession, duty
         resolve_fn=lambda period_index: resolve_team_duty_assignee(
             ordered_members, duty_index, period_index, overrides_by_period
         ),
+        candidates=[m.user_id for m in ordered_members],
     )
 
 
@@ -86,6 +94,7 @@ async def _materialize(
     horizon: date,
     period_index_fn: Callable[[date], int],
     resolve_fn: Callable[[int], object],
+    candidates: list,
 ) -> None:
     latest_result = await session.execute(
         select(DutyOccurrence.due_date)
@@ -96,17 +105,32 @@ async def _materialize(
     latest_due_date = latest_result.scalar_one_or_none()
     next_due = latest_due_date + timedelta(days=duty.task_interval_days) if latest_due_date else duty.start_date
 
+    # Loaded once up front rather than per due-date: an occurrence only needs auto-reassigning
+    # away from whoever the rotation formula resolved to *if* that person opted an absence
+    # covering this date into auto_reassign — everyone else's plain (non-opted-in) absences
+    # only matter for ruling out a candidate as the replacement.
+    auto_reassign_absences = await load_auto_reassign_absences_by_user(session, candidates)
+    all_absences = await load_active_absences_by_user(session, candidates)
+
     rows: list[DutyOccurrence] = []
     due = next_due
     while due <= horizon:
         period_index = period_index_fn(due)
         assignee_id = resolve_fn(period_index)
+        is_override = False
+        if candidates and is_user_away(auto_reassign_absences, assignee_id, due):
+            away_today = {c for c in candidates if is_user_away(all_absences, c, due)}
+            replacement = pick_reassignment(candidates, assignee_id, away_today)
+            if replacement is not None:
+                assignee_id = replacement
+                is_override = True
         rows.append(
             DutyOccurrence(
                 duty_id=duty.id,
                 due_date=due,
                 period_index=period_index,
                 assigned_user_id=assignee_id,
+                is_manual_override=is_override,
             )
         )
         due += timedelta(days=duty.task_interval_days)

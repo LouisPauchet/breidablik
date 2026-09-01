@@ -93,6 +93,7 @@
           <strong>{{ members.nameOf(absence.user_id) }}</strong>
           {{ formatDate(absence.start_date) }} &ndash; {{ formatDate(absence.end_date) }}
           <span v-if="absence.reason" class="muted">({{ absence.reason }})</span>
+          <span v-if="absence.auto_reassign" class="badge">auto-reassigned</span>
         </div>
         <button v-if="absence.user_id === authStore.user?.id" type="button" @click="onDeleteAbsence(absence.id)">
           Remove
@@ -114,6 +115,14 @@
         Reason (optional)
         <input v-model="reason" placeholder="e.g. holiday" />
       </label>
+      <label class="checkbox-row">
+        <input v-model="autoReassign" type="checkbox" />
+        Auto-reassign my duties while I'm away
+      </label>
+      <p class="muted small">
+        Hands any of your duty occurrences in this window to the next person in the rotation
+        who isn't also away, instead of just flagging them for someone to swap by hand.
+      </p>
       <p v-if="error" class="error">{{ error }}</p>
       <button type="submit" class="submit-btn" :disabled="loading">Add</button>
     </form>
@@ -469,6 +478,7 @@ watch(
 const startDate = ref(new Date().toISOString().slice(0, 10))
 const endDate = ref(new Date().toISOString().slice(0, 10))
 const reason = ref('')
+const autoReassign = ref(false)
 const loading = ref(false)
 const error = ref('')
 
@@ -480,8 +490,17 @@ async function submitAbsence() {
       start_date: startDate.value,
       end_date: endDate.value,
       reason: reason.value || null,
+      auto_reassign: autoReassign.value,
     })
     reason.value = ''
+    if (autoReassign.value) {
+      // Reassignment happens server-side at creation time — refetch so the grid/agenda
+      // reflect the new assignee immediately instead of showing the stale one.
+      upcomingOccurrences.value = await $fetch<UpcomingOccurrence[]>('/api/duties/occurrences/upcoming', {
+        query: { horizon_days: fetchedHorizonDays },
+      })
+    }
+    autoReassign.value = false
   } catch {
     error.value = 'Could not add that — check the dates and try again.'
   } finally {
@@ -763,6 +782,16 @@ async function onDeleteAbsence(id: string) {
   font-size: 0.9rem;
 }
 
+.absence-row .badge {
+  margin-left: 0.4rem;
+  font-size: 0.65rem;
+  background: var(--accent);
+  color: white;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
 .absence-row button {
   padding: 0.3rem 0.6rem;
   border-radius: 0.4rem;
@@ -786,6 +815,16 @@ label {
   flex-direction: column;
   gap: 0.25rem;
   font-size: 0.9rem;
+}
+
+.checkbox-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.checkbox-row input {
+  width: auto;
 }
 
 input {

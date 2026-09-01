@@ -4,6 +4,7 @@ export interface Absence {
   start_date: string
   end_date: string
   reason: string | null
+  auto_reassign: boolean
   created_at: string
 }
 
@@ -11,6 +12,7 @@ export interface AbsenceCreatePayload {
   start_date: string
   end_date: string
   reason?: string | null
+  auto_reassign?: boolean
 }
 
 export const useAbsencesStore = defineStore('absences', {

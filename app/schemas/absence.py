@@ -12,6 +12,7 @@ class AbsenceOut(BaseModel):
     start_date: date
     end_date: date
     reason: str | None
+    auto_reassign: bool
     created_at: datetime
 
 
@@ -19,6 +20,7 @@ class AbsenceCreate(BaseModel):
     start_date: date
     end_date: date
     reason: str | None = None
+    auto_reassign: bool = False
 
     @model_validator(mode="after")
     def check_date_order(self) -> "AbsenceCreate":
