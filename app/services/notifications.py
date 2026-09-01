@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.duty import Duty
+from app.models.event import Event
 from app.models.notification import Notification
 from app.models.shopping import ShoppingItem, ShoppingList
 from app.models.user import User
@@ -64,6 +65,27 @@ async def notify_shopping_item_added(
         on_duty_user_id,
         {"title": notification.title, "body": notification.body, "url": notification.url},
     )
+
+
+async def notify_event_created(session: AsyncSession, event: Event, creator: User) -> None:
+    """A new event is relevant to the whole household, not just whoever's on duty — unlike
+    notify_shopping_item_added above, this broadcasts to every other active member.
+    """
+    result = await session.execute(select(User).where(User.is_active.is_(True), User.id != creator.id))
+    recipients = list(result.scalars())
+    if not recipients:
+        return
+
+    title = "New event"
+    body = f'"{event.title}" was added to the calendar'
+    url = f"/events/{event.id}"
+
+    for recipient in recipients:
+        session.add(Notification(user_id=recipient.id, kind="event_created", title=title, body=body, url=url))
+    await session.commit()
+
+    for recipient in recipients:
+        await send_push_to_user(session, recipient.id, {"title": title, "body": body, "url": url})
 
 
 async def notify_admins_of_update(session: AsyncSession, version: str) -> None:

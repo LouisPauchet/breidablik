@@ -18,6 +18,7 @@ from app.schemas.event import (
     EventUpdate,
     RSVPIn,
 )
+from app.services.notifications import notify_event_created
 
 router = APIRouter(prefix="/api/events", tags=["events"], dependencies=[Depends(current_active_user)])
 
@@ -80,7 +81,9 @@ async def create_event(
     )
     session.add(event)
     await session.commit()
-    return await _load_event_or_404(session, event.id)
+    event = await _load_event_or_404(session, event.id)
+    await notify_event_created(session, event, user)
+    return event
 
 
 @router.get("/{event_id}", response_model=EventOut)

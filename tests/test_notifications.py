@@ -8,9 +8,10 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 import app.services.push as push_module
 from app.models.duty import Duty, DutyAssignee
+from app.models.event import Event
 from app.models.notification import Notification, PushSubscription
 from app.models.shopping import ShoppingItem, ShoppingList
-from app.services.notifications import notify_admins_of_update, notify_shopping_item_added
+from app.services.notifications import notify_admins_of_update, notify_event_created, notify_shopping_item_added
 from app.services.push import send_push_to_user
 
 ALICE = uuid.uuid4()
@@ -146,6 +147,40 @@ async def test_notify_admins_of_update_notifies_only_active_superusers(test_engi
         assert notifications[0].user_id == admin.id
         assert notifications[0].user_id != member.id
         assert "1.2.3" in notifications[0].body
+
+
+async def test_notify_event_created_broadcasts_to_everyone_but_creator(test_engine):
+    from datetime import datetime, timezone
+
+    from fastapi_users.db import SQLAlchemyUserDatabase
+
+    from app.auth.users import UserManager
+    from app.models.user import User
+    from app.schemas.user import UserCreate
+
+    async with _session(test_engine) as session:
+        manager = UserManager(SQLAlchemyUserDatabase(session, User))
+        alice = await manager.create(
+            UserCreate(email="alice@example.com", password="correcthorsebatterystaple", display_name="Alice"),
+            safe=False,
+        )
+        bob = await manager.create(
+            UserCreate(email="bob@example.com", password="correcthorsebatterystaple", display_name="Bob"),
+            safe=False,
+        )
+
+        event = Event(title="Game night", start_at=datetime.now(timezone.utc), created_by_id=alice.id)
+        session.add(event)
+        await session.commit()
+        await session.refresh(event)
+
+        await notify_event_created(session, event, alice)
+
+        result = await session.execute(select(Notification))
+        notifications = list(result.scalars())
+        assert len(notifications) == 1
+        assert notifications[0].user_id == bob.id
+        assert "Game night" in notifications[0].body
 
 
 async def test_send_push_noop_without_vapid_configured(test_engine, monkeypatch):
