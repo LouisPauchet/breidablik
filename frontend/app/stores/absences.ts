@@ -15,6 +15,13 @@ export interface AbsenceCreatePayload {
   auto_reassign?: boolean
 }
 
+export interface AbsenceUpdatePayload {
+  start_date?: string
+  end_date?: string
+  reason?: string | null
+  auto_reassign?: boolean
+}
+
 export const useAbsencesStore = defineStore('absences', {
   state: () => ({
     absences: [] as Absence[],
@@ -29,6 +36,14 @@ export const useAbsencesStore = defineStore('absences', {
       this.absences.push(created)
       this.absences.sort((a, b) => a.start_date.localeCompare(b.start_date))
       return created
+    },
+
+    async updateAbsence(id: string, payload: AbsenceUpdatePayload) {
+      const updated = await $fetch<Absence>(`/api/absences/${id}`, { method: 'PATCH', body: payload })
+      const idx = this.absences.findIndex((a) => a.id === id)
+      if (idx !== -1) this.absences[idx] = updated
+      this.absences.sort((a, b) => a.start_date.localeCompare(b.start_date))
+      return updated
     },
 
     async deleteAbsence(id: string) {

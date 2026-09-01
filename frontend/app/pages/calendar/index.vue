@@ -19,16 +19,12 @@
     <template v-if="viewMode === 'agenda'">
       <p v-if="!agenda.length" class="muted">Nothing coming up in the next 8 weeks.</p>
       <ul class="agenda-list">
-        <li v-for="entry in agenda" :key="entry.key" class="agenda-row">
-          <span class="kind-badge" :class="entry.kind">{{ entry.kind }}</span>
-          <div class="agenda-body">
-            <NuxtLink v-if="entry.href" :to="entry.href" class="agenda-title" :class="{ done: entry.done }">
-              {{ entry.title }}
-            </NuxtLink>
-            <span v-else class="agenda-title" :class="{ done: entry.done }">{{ entry.title }}</span>
-            <div class="agenda-meta">{{ entry.whenLabel }}<span v-if="entry.detail"> &middot; {{ entry.detail }}</span></div>
-          </div>
-        </li>
+        <CalendarEntryRow
+          v-for="entry in agenda"
+          :key="entry.key"
+          :entry="entry"
+          @edit-absence="onEditAbsence"
+        />
       </ul>
     </template>
 
@@ -72,16 +68,12 @@
       <h3 class="selected-label">{{ selectedDateLabel }}</h3>
       <p v-if="!selectedEntries.length" class="muted">Nothing that day.</p>
       <ul class="agenda-list">
-        <li v-for="entry in selectedEntries" :key="entry.key" class="agenda-row">
-          <span class="kind-badge" :class="entry.kind">{{ entry.kind }}</span>
-          <div class="agenda-body">
-            <NuxtLink v-if="entry.href" :to="entry.href" class="agenda-title" :class="{ done: entry.done }">
-              {{ entry.title }}
-            </NuxtLink>
-            <span v-else class="agenda-title" :class="{ done: entry.done }">{{ entry.title }}</span>
-            <div class="agenda-meta">{{ entry.whenLabel }}<span v-if="entry.detail"> &middot; {{ entry.detail }}</span></div>
-          </div>
-        </li>
+        <CalendarEntryRow
+          v-for="entry in selectedEntries"
+          :key="entry.key"
+          :entry="entry"
+          @edit-absence="onEditAbsence"
+        />
       </ul>
     </template>
 
@@ -89,7 +81,18 @@
     <p v-if="!absences.absences.length" class="muted">Nobody has marked themselves away.</p>
     <ul class="absence-list">
       <li v-for="absence in absences.absences" :key="absence.id" class="absence-row">
-        <div>
+        <button
+          v-if="absence.user_id === authStore.user?.id"
+          type="button"
+          class="absence-summary as-button"
+          @click="onEditAbsence(absence.id)"
+        >
+          <strong>{{ members.nameOf(absence.user_id) }}</strong>
+          {{ formatDate(absence.start_date) }} &ndash; {{ formatDate(absence.end_date) }}
+          <span v-if="absence.reason" class="muted">({{ absence.reason }})</span>
+          <span v-if="absence.auto_reassign" class="badge">auto-reassigned</span>
+        </button>
+        <div v-else class="absence-summary">
           <strong>{{ members.nameOf(absence.user_id) }}</strong>
           {{ formatDate(absence.start_date) }} &ndash; {{ formatDate(absence.end_date) }}
           <span v-if="absence.reason" class="muted">({{ absence.reason }})</span>
@@ -101,7 +104,7 @@
       </li>
     </ul>
 
-    <h2>Mark yourself away</h2>
+    <h2 id="away-form">{{ editingAbsenceId ? 'Edit your away period' : 'Mark yourself away' }}</h2>
     <form class="card" @submit.prevent="submitAbsence">
       <label>
         From
@@ -124,7 +127,14 @@
         who isn't also away, instead of just flagging them for someone to swap by hand.
       </p>
       <p v-if="error" class="error">{{ error }}</p>
-      <button type="submit" class="submit-btn" :disabled="loading">Add</button>
+      <div class="btn-row">
+        <button type="submit" class="submit-btn" :disabled="loading">
+          {{ editingAbsenceId ? 'Save changes' : 'Add' }}
+        </button>
+        <button v-if="editingAbsenceId" type="button" class="cancel-btn" @click="onCancelEditAbsence">
+          Cancel
+        </button>
+      </div>
     </form>
   </div>
 </template>
@@ -166,6 +176,8 @@ interface AgendaEntry {
   whenLabel: string
   done?: boolean
   href?: string
+  editable?: boolean
+  absenceId?: string
 }
 
 function pad2(n: number) {
@@ -241,7 +253,7 @@ const agenda = computed<AgendaEntry[]>(() => {
       detail: task.assignee_user_ids.map((id) => members.nameOf(id)).join(', '),
       whenLabel: formatDate(task.due_date),
       done: task.is_done,
-      href: '/tasks',
+      href: `/tasks/${task.id}`,
     })
   }
 
@@ -269,6 +281,8 @@ const agenda = computed<AgendaEntry[]>(() => {
       title: `${members.nameOf(absence.user_id)} away`,
       detail: absence.reason ?? '',
       whenLabel: `${formatDate(absence.start_date)} - ${formatDate(absence.end_date)}`,
+      editable: absence.user_id === authStore.user?.id,
+      absenceId: absence.id,
     })
   }
 
@@ -407,7 +421,7 @@ function entriesForDate(dateIso: string): AgendaEntry[] {
       detail: task.assignee_user_ids.map((id) => members.nameOf(id)).join(', '),
       whenLabel: formatDate(task.due_date),
       done: task.is_done,
-      href: '/tasks',
+      href: `/tasks/${task.id}`,
     })
   }
   for (const event of events.events) {
@@ -432,6 +446,8 @@ function entriesForDate(dateIso: string): AgendaEntry[] {
       title: `${members.nameOf(absence.user_id)} away`,
       detail: absence.reason ?? '',
       whenLabel: `${formatDate(absence.start_date)} - ${formatDate(absence.end_date)}`,
+      editable: absence.user_id === authStore.user?.id,
+      absenceId: absence.id,
     })
   }
   for (const member of members.members) {
@@ -481,35 +497,74 @@ const reason = ref('')
 const autoReassign = ref(false)
 const loading = ref(false)
 const error = ref('')
+const editingAbsenceId = ref<string | null>(null)
+
+async function refetchOccurrences() {
+  upcomingOccurrences.value = await $fetch<UpcomingOccurrence[]>('/api/duties/occurrences/upcoming', {
+    query: { horizon_days: fetchedHorizonDays },
+  })
+}
 
 async function submitAbsence() {
   error.value = ''
   loading.value = true
   try {
-    await absences.createAbsence({
-      start_date: startDate.value,
-      end_date: endDate.value,
-      reason: reason.value || null,
-      auto_reassign: autoReassign.value,
-    })
+    if (editingAbsenceId.value) {
+      await absences.updateAbsence(editingAbsenceId.value, {
+        start_date: startDate.value,
+        end_date: endDate.value,
+        reason: reason.value || null,
+        auto_reassign: autoReassign.value,
+      })
+      editingAbsenceId.value = null
+    } else {
+      await absences.createAbsence({
+        start_date: startDate.value,
+        end_date: endDate.value,
+        reason: reason.value || null,
+        auto_reassign: autoReassign.value,
+      })
+    }
     reason.value = ''
     if (autoReassign.value) {
-      // Reassignment happens server-side at creation time — refetch so the grid/agenda
-      // reflect the new assignee immediately instead of showing the stale one.
-      upcomingOccurrences.value = await $fetch<UpcomingOccurrence[]>('/api/duties/occurrences/upcoming', {
-        query: { horizon_days: fetchedHorizonDays },
-      })
+      // Reassignment happens server-side on save — refetch so the grid/agenda reflect the
+      // new assignee immediately instead of showing the stale one.
+      await refetchOccurrences()
     }
     autoReassign.value = false
   } catch {
-    error.value = 'Could not add that — check the dates and try again.'
+    error.value = 'Could not save that — check the dates and try again.'
   } finally {
     loading.value = false
   }
 }
 
+function onEditAbsence(absenceId: string) {
+  const absence = absences.absences.find((a) => a.id === absenceId)
+  if (!absence) return
+  editingAbsenceId.value = absence.id
+  startDate.value = absence.start_date
+  endDate.value = absence.end_date
+  reason.value = absence.reason ?? ''
+  autoReassign.value = absence.auto_reassign
+  error.value = ''
+  if (typeof document !== 'undefined') {
+    document.getElementById('away-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+}
+
+function onCancelEditAbsence() {
+  editingAbsenceId.value = null
+  startDate.value = new Date().toISOString().slice(0, 10)
+  endDate.value = new Date().toISOString().slice(0, 10)
+  reason.value = ''
+  autoReassign.value = false
+  error.value = ''
+}
+
 async function onDeleteAbsence(id: string) {
   await absences.deleteAbsence(id)
+  if (editingAbsenceId.value === id) onCancelEditAbsence()
 }
 </script>
 
@@ -700,69 +755,6 @@ async function onDeleteAbsence(id: string) {
   gap: 0.5rem;
 }
 
-.agenda-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.6rem;
-  border: 1px solid var(--border);
-  border-radius: 0.6rem;
-  padding: 0.7rem;
-}
-
-.kind-badge {
-  flex-shrink: 0;
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  padding: 0.2rem 0.5rem;
-  border-radius: 999px;
-  color: white;
-  margin-top: 0.1rem;
-}
-
-.kind-badge.duty {
-  background: #0f766e;
-}
-
-.kind-badge.task {
-  background: #2563eb;
-}
-
-.kind-badge.event {
-  background: #9333ea;
-}
-
-.kind-badge.away {
-  background: #d97706;
-}
-
-.kind-badge.birthday {
-  background: #db2777;
-}
-
-.agenda-body {
-  flex: 1;
-  min-width: 0;
-}
-
-.agenda-title {
-  display: block;
-  font-weight: 600;
-  color: var(--fg);
-  text-decoration: none;
-}
-
-.agenda-title.done {
-  text-decoration: line-through;
-  color: var(--muted);
-  font-weight: 400;
-}
-
-.agenda-meta {
-  font-size: 0.8rem;
-  color: var(--muted);
-}
-
 .absence-list {
   list-style: none;
   padding: 0;
@@ -776,10 +768,25 @@ async function onDeleteAbsence(id: string) {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 0.6rem;
   border: 1px solid var(--border);
   border-radius: 0.6rem;
   padding: 0.7rem;
   font-size: 0.9rem;
+}
+
+.absence-summary {
+  text-align: left;
+}
+
+.absence-summary.as-button {
+  border: none;
+  background: none;
+  padding: 0;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
 }
 
 .absence-row .badge {
@@ -836,12 +843,27 @@ input {
   font-size: 1rem;
 }
 
+.btn-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
 .submit-btn {
+  flex: 1;
   padding: 0.65rem;
   border-radius: 0.5rem;
   border: none;
   background: var(--accent);
   color: white;
+  font-size: 1rem;
+}
+
+.cancel-btn {
+  padding: 0.65rem 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
   font-size: 1rem;
 }
 

@@ -27,3 +27,10 @@ class AbsenceCreate(BaseModel):
         if self.end_date < self.start_date:
             raise ValueError("end_date must not be before start_date")
         return self
+
+
+class AbsenceUpdate(BaseModel):
+    start_date: date | None = None
+    end_date: date | None = None
+    reason: str | None = None
+    auto_reassign: bool | None = None
