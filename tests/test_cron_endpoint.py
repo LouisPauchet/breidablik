@@ -17,6 +17,7 @@ async def test_cron_tick_accepts_correct_secret(client, monkeypatch):
     import app.routers.internal as internal_module
 
     monkeypatch.setattr(internal_module, "run_all_reminders", AsyncMock())
+    monkeypatch.setattr(internal_module, "run_award_cycle_tick", AsyncMock())
 
     settings = get_settings()
     resp = await client.post(
@@ -25,6 +26,7 @@ async def test_cron_tick_accepts_correct_secret(client, monkeypatch):
     assert resp.status_code == 200
     assert resp.json() == {"ok": True}
     internal_module.run_all_reminders.assert_awaited_once()
+    internal_module.run_award_cycle_tick.assert_awaited_once()
 
 
 async def test_notify_update_rejects_missing_secret(client):

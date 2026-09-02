@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.db import get_session
+from app.services.awards import run_award_cycle_tick
 from app.services.notifications import notify_admins_of_update
 from app.services.reminders import run_all_reminders
 
@@ -31,6 +32,7 @@ def _require_cron_secret(x_cron_secret: str) -> None:
 async def cron_tick(x_cron_secret: str = Header(default=""), session: AsyncSession = Depends(get_session)):
     _require_cron_secret(x_cron_secret)
     await run_all_reminders(session)
+    await run_award_cycle_tick(session)
     return {"ok": True}
 
 

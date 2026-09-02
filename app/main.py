@@ -14,6 +14,7 @@ from app.db import session_scope
 from app.routers.absences import router as absences_router
 from app.routers.admin import router as admin_router
 from app.routers.avatars import router as avatars_router
+from app.routers.awards import router as awards_router
 from app.routers.calendar_feed import router as calendar_feed_router
 from app.routers.dashboard import router as dashboard_router
 from app.routers.duties import router as duties_router
@@ -26,6 +27,7 @@ from app.routers.quotes import router as quotes_router
 from app.routers.shopping import router as shopping_router
 from app.routers.tasks import router as tasks_router
 from app.schemas.user import UserRead, UserUpdate
+from app.services.awards import run_award_cycle_tick
 from app.services.reminders import run_all_reminders
 from app.version import get_version
 
@@ -38,6 +40,7 @@ _scheduler: AsyncIOScheduler | None = None
 async def _scheduled_reminder_tick() -> None:
     async with session_scope() as session:
         await run_all_reminders(session)
+        await run_award_cycle_tick(session)
 
 
 @asynccontextmanager
@@ -67,6 +70,7 @@ app = FastAPI(title="Breidablik", lifespan=lifespan)
 app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(avatars_router)
+app.include_router(awards_router)
 app.include_router(dashboard_router)
 app.include_router(duties_router)
 app.include_router(duty_teams_router)
