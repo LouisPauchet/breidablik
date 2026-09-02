@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.1](https://github.com/LouisPauchet/breidablik/compare/breidablik-v0.4.0...breidablik-v0.4.1) (2026-09-02)
+
+
+### Bug Fixes
+
+* missing ownership check on push-subscription removal (IDOR) ([3249445](https://github.com/LouisPauchet/breidablik/commit/324944517cec5ab0ed945460852469e3d6ef11e1))
+* no brute-force throttling on TOTP/recovery-code login ([02e8248](https://github.com/LouisPauchet/breidablik/commit/02e8248ef5a17fbdd43b6b15f3a5dbd58f1dfbac))
+* password change/reset didn't invalidate other login sessions ([a215b7d](https://github.com/LouisPauchet/breidablik/commit/a215b7d8056907e16402d209368857745e2ac1e9))
+* path traversal in the SPA static-file fallback route ([4a9d3c6](https://github.com/LouisPauchet/breidablik/commit/4a9d3c604f5a3bf2e83522a2765c65d45b56f587))
+* PIN lockout counter bypassable via concurrent requests ([23861bb](https://github.com/LouisPauchet/breidablik/commit/23861bb5f47d68eb27a41d6a9f3ced734d226bc4))
+* shopping-list duty notification never fired for team-attached duties ([89fc4a0](https://github.com/LouisPauchet/breidablik/commit/89fc4a0458192c585066f656b15cf35803616ced))
+* tar-slip fallback in passenger_update.py's archive extraction ([5cf3e0b](https://github.com/LouisPauchet/breidablik/commit/5cf3e0b7ece91e6115f1df0a2aa4127f8a9aa125))
+
 ## [0.4.0](https://github.com/LouisPauchet/breidablik/compare/breidablik-v0.3.0...breidablik-v0.4.0) (2026-09-01)
 
 
