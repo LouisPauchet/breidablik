@@ -83,6 +83,48 @@ async def test_shared_list_with_duty_notifies_on_duty_person_not_adder(test_engi
         assert "Milk" in notifications[0].body
 
 
+async def test_shared_list_with_team_duty_notifies_current_assignee(test_engine):
+    # Regression test: notify_shopping_item_added used to resolve the on-duty person via
+    # duty.assignees alone, which is always empty for a team-attached duty (its rotation
+    # comes from the DutyTeam chore-wheel instead) — so no notification was ever sent for
+    # any shopping list backed by a team duty. See app/services/duty_status.py.
+    from app.models.duty import DutyTeam, DutyTeamMember
+
+    async with _session(test_engine) as session:
+        team = DutyTeam(
+            name="Chores", start_date=date.today(), rotation_interval_days=7, created_by_id=ALICE
+        )
+        session.add(team)
+        await session.flush()
+        session.add(DutyTeamMember(team_id=team.id, user_id=ALICE, order_index=0))
+
+        duty = Duty(
+            title="Shopping",
+            start_date=date.today(),
+            task_interval_days=7,
+            team_id=team.id,
+            created_by_id=ALICE,
+        )
+        session.add(duty)
+        await session.flush()
+
+        shopping_list = ShoppingList(
+            name="Household", owner_user_id=None, duty_id=duty.id, created_by_id=BOB
+        )
+        session.add(shopping_list)
+        await session.flush()
+        item = ShoppingItem(list_id=shopping_list.id, name="Milk", added_by_id=BOB)
+        session.add(item)
+        await session.commit()
+
+        await notify_shopping_item_added(session, shopping_list, item, adder_id=BOB)
+
+        result = await session.execute(select(Notification))
+        notifications = list(result.scalars())
+        assert len(notifications) == 1
+        assert notifications[0].user_id == ALICE
+
+
 async def test_skip_self_when_adder_is_on_duty(test_engine):
     async with _session(test_engine) as session:
         duty = Duty(

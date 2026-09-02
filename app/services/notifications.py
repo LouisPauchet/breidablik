@@ -9,13 +9,8 @@ from app.models.event import Event
 from app.models.notification import Notification
 from app.models.shopping import ShoppingItem, ShoppingList
 from app.models.user import User
+from app.services.duty_status import resolve_current_assignee
 from app.services.push import send_push_to_user
-from app.services.rotation import (
-    compute_period_index,
-    overrides_by_period_index,
-    resolve_assignee_for_period,
-    sorted_assignees,
-)
 from app.timeutils import today
 
 
@@ -39,13 +34,9 @@ async def notify_shopping_item_added(
     if duty is None:
         return
 
-    ordered = sorted_assignees(duty.assignees)
-    if not ordered:
+    on_duty_user_id = await resolve_current_assignee(session, duty, today())
+    if on_duty_user_id is None:
         return
-
-    period_index = compute_period_index(duty, today())
-    overrides_by_period = overrides_by_period_index(duty.overrides)
-    on_duty_user_id = resolve_assignee_for_period(ordered, overrides_by_period, period_index)
 
     if on_duty_user_id == adder_id:
         return
