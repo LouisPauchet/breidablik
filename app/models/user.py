@@ -27,6 +27,14 @@ class User(SQLAlchemyBaseUserTableUUID, Base):
     is_2fa_enabled: Mapped[bool] = mapped_column(default=False)
     totp_recovery_codes: Mapped[str | None] = mapped_column(Text, default=None)
 
+    # DB-backed (not in-memory) for the same reason as DeviceTrust's PIN counters below:
+    # production may run multiple worker processes, and unlike a pending-2FA cookie this
+    # persists across a fresh POST /api/auth/login — otherwise an attacker who already has
+    # the password could just re-login to mint a new pending token and reset their guess
+    # budget for free.
+    totp_failed_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    totp_locked_until: Mapped[datetime | None] = mapped_column(default=None)
+
     # Secret used in the per-user ICS subscription URL (/calendar/{token}.ics). Regenerable
     # from Profile if it ever leaks, since calendar apps fetch it unauthenticated.
     calendar_feed_token: Mapped[str] = mapped_column(

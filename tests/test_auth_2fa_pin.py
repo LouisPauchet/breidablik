@@ -61,6 +61,50 @@ async def test_login_gated_behind_2fa_when_enabled(client, alice):
     assert me.status_code == 200
 
 
+async def test_2fa_lockout_after_repeated_failures(client, alice):
+    await _login(client)
+    secret = await _enroll_totp(client)
+    await client.post("/api/auth/logout")
+
+    await _login(client)  # requires_2fa: true, sets the pending-2FA cookie
+
+    for _ in range(5):
+        resp = await client.post("/api/auth/login/2fa", json={"code": "000000"})
+        assert resp.status_code == 400
+
+    # Even the correct code is now rejected while locked out — and this isn't defeated by
+    # the pending token being fresh, since the lockout is tracked on the user, not the token.
+    code = pyotp.TOTP(secret).now()
+    locked = await client.post("/api/auth/login/2fa", json={"code": code})
+    assert locked.status_code == 423
+    assert locked.json()["detail"] == "2FA_LOCKED"
+
+
+async def test_2fa_failure_counter_resets_on_success(client, alice, test_engine):
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from app.models.user import User
+
+    await _login(client)
+    secret = await _enroll_totp(client)
+    await client.post("/api/auth/logout")
+
+    await _login(client)
+    await client.post("/api/auth/login/2fa", json={"code": "000000"})
+
+    code = pyotp.TOTP(secret).now()
+    ok = await client.post("/api/auth/login/2fa", json={"code": code})
+    assert ok.status_code == 200
+
+    maker = async_sessionmaker(test_engine, expire_on_commit=False)
+    async with maker() as session:
+        result = await session.execute(select(User).where(User.id == alice.id))
+        user = result.scalar_one()
+        assert user.totp_failed_attempts == 0
+        assert user.totp_locked_until is None
+
+
 async def test_pin_login_bypasses_password_and_2fa(client, alice):
     await _login(client)
     await _enroll_totp(client)
