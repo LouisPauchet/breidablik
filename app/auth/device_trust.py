@@ -2,7 +2,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 
 from fastapi_users.password import PasswordHelper
-from sqlalchemy import select, update
+from sqlalchemy import case, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import DeviceTrust
@@ -50,9 +50,24 @@ def verify_pin(pin: str, device: DeviceTrust) -> bool:
 
 
 async def register_pin_failure(session: AsyncSession, device: DeviceTrust) -> None:
-    device.failed_pin_attempts += 1
-    if device.failed_pin_attempts >= MAX_PIN_ATTEMPTS:
-        device.locked_until = datetime.now(timezone.utc) + timedelta(minutes=LOCKOUT_MINUTES)
+    # A plain read-modify-write here (increment the already-loaded ORM object, then commit)
+    # is not atomic across concurrent requests: each request's own transaction reads the same
+    # pre-increment value, so a burst of concurrent wrong-PIN guesses under-counts and the
+    # lockout threshold never reliably triggers. A single UPDATE ... SET x = x + 1 is atomic
+    # per-row (the row lock the UPDATE itself takes serializes concurrent writers), so this
+    # computes the new count and the lockout decision in one statement instead.
+    new_attempts = DeviceTrust.failed_pin_attempts + 1
+    await session.execute(
+        update(DeviceTrust)
+        .where(DeviceTrust.id == device.id)
+        .values(
+            failed_pin_attempts=new_attempts,
+            locked_until=case(
+                (new_attempts >= MAX_PIN_ATTEMPTS, datetime.now(timezone.utc) + timedelta(minutes=LOCKOUT_MINUTES)),
+                else_=DeviceTrust.locked_until,
+            ),
+        )
+    )
     await session.commit()
 
 
