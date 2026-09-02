@@ -98,6 +98,22 @@ async def version() -> dict:
 
 frontend_dist = Path(settings.frontend_dist_dir)
 
+
+def resolve_within(base: Path, relative: str) -> Path | None:
+    """Resolve `relative` against `base`, returning None if the result would escape `base`.
+
+    `relative` here is attacker-controlled (a route's {path:path} parameter) and Starlette's
+    path converter does not strip `..` segments before matching, so a naive join (base /
+    relative) lets a request like `/../../.env` read any file the process can access.
+    Resolving both sides and checking containment closes that off regardless of how many
+    `..` segments are used or how they're encoded.
+    """
+    candidate = (base / relative).resolve()
+    if not candidate.is_relative_to(base.resolve()):
+        return None
+    return candidate
+
+
 if frontend_dist.is_dir():
     nuxt_assets_dir = frontend_dist / "_nuxt"
     if nuxt_assets_dir.is_dir():
@@ -110,7 +126,10 @@ if frontend_dist.is_dir():
         if full_path == "api" or full_path.startswith("api/"):
             raise HTTPException(status_code=404)
 
-        candidate = frontend_dist / full_path
+        candidate = resolve_within(frontend_dist, full_path)
+        if candidate is None:
+            raise HTTPException(status_code=404)
+
         if full_path:
             if candidate.is_file():
                 return FileResponse(candidate)
