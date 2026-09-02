@@ -26,12 +26,14 @@
 
     <ul class="rsvp-summary">
       <li v-for="row in rsvpByMember" :key="row.userId" :class="{ pending: !row.status }">
-        <Avatar
-          :user-id="row.userId"
-          :name="row.name"
-          :avatar-updated-at="members.avatarUpdatedAtOf(row.userId)"
-          :size="28"
-        />
+        <NuxtLink :to="`/members/${row.userId}`" class="avatar-link">
+          <Avatar
+            :user-id="row.userId"
+            :name="row.name"
+            :avatar-updated-at="members.avatarUpdatedAtOf(row.userId)"
+            :size="28"
+          />
+        </NuxtLink>
         <span>{{ row.name }}: <strong>{{ row.status ?? 'no response yet' }}</strong></span>
       </li>
     </ul>
@@ -173,6 +175,10 @@ async function onDelete() {
 
 .rsvp-summary li.pending {
   color: var(--muted);
+}
+
+.avatar-link {
+  display: inline-flex;
 }
 
 .series-block {

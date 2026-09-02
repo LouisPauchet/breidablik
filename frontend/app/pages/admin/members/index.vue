@@ -4,12 +4,14 @@
 
     <ul class="member-list">
       <li v-for="member in members" :key="member.id" class="member-row">
-        <Avatar
-          :user-id="member.id"
-          :name="member.display_name"
-          :avatar-updated-at="member.avatar_updated_at"
-          :size="40"
-        />
+        <NuxtLink :to="`/members/${member.id}`" class="avatar-link">
+          <Avatar
+            :user-id="member.id"
+            :name="member.display_name"
+            :avatar-updated-at="member.avatar_updated_at"
+            :size="40"
+          />
+        </NuxtLink>
         <div>
           <div class="member-name">
             {{ member.display_name }}
@@ -202,6 +204,10 @@ async function onToggleSuperuser(member: Member) {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+}
+
+.avatar-link {
+  display: inline-flex;
 }
 
 .member-row {

@@ -8,21 +8,22 @@
     <p v-if="!duties.duties.length" class="muted">No duties yet. Create the first one.</p>
 
     <ul class="duty-list">
-      <li v-for="duty in duties.duties" :key="duty.id">
+      <li v-for="duty in duties.duties" :key="duty.id" class="duty-row">
+        <NuxtLink :to="`/members/${duty.current_period.assignee_user_id}`" class="avatar-link">
+          <Avatar
+            :user-id="duty.current_period.assignee_user_id"
+            :name="members.nameOf(duty.current_period.assignee_user_id)"
+            :avatar-updated-at="members.avatarUpdatedAtOf(duty.current_period.assignee_user_id)"
+            :size="32"
+          />
+        </NuxtLink>
         <NuxtLink :to="`/duties/${duty.id}`" class="duty-card">
           <div class="duty-title">
             {{ duty.title }}
             <span v-if="duty.team_id" class="badge">{{ teams.nameOf(duty.team_id) }}</span>
           </div>
           <div class="duty-meta">
-            On duty:
-            <Avatar
-              :user-id="duty.current_period.assignee_user_id"
-              :name="members.nameOf(duty.current_period.assignee_user_id)"
-              :avatar-updated-at="members.avatarUpdatedAtOf(duty.current_period.assignee_user_id)"
-              :size="20"
-            />
-            <strong>{{ members.nameOf(duty.current_period.assignee_user_id) }}</strong>
+            On duty: <strong>{{ members.nameOf(duty.current_period.assignee_user_id) }}</strong>
             until {{ formatDate(duty.current_period.end_date) }}
           </div>
         </NuxtLink>
@@ -74,8 +75,21 @@ function formatDate(iso: string) {
   gap: 0.6rem;
 }
 
+.duty-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.avatar-link {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
 .duty-card {
   display: block;
+  flex: 1;
+  min-width: 0;
   border: 1px solid var(--border);
   border-radius: 0.75rem;
   padding: 0.9rem;

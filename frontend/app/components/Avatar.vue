@@ -1,7 +1,10 @@
 <template>
-  <div class="avatar" :style="{ width: `${size}px`, height: `${size}px`, fontSize: `${fontSize}px` }">
-    <img v-if="src && !failed" :src="src" :alt="name" @error="failed = true" />
-    <span v-else class="initials" :style="{ background: bgColor }">{{ initials }}</span>
+  <div class="avatar-wrap" :style="{ width: `${size}px`, height: `${size}px` }">
+    <div class="avatar">
+      <img v-if="src && !failed" :src="src" :alt="name" @error="failed = true" />
+      <span v-else class="initials" :style="{ background: bgColor, fontSize: `${fontSize}px` }">{{ initials }}</span>
+    </div>
+    <span v-if="badge" class="badge" :style="{ fontSize: `${badgeFontSize}px` }">{{ badge }}</span>
   </div>
 </template>
 
@@ -13,8 +16,9 @@ const props = withDefaults(
     avatarUpdatedAt?: string | null
     size?: number
     srcOverride?: string | null
+    badge?: string | null
   }>(),
-  { size: 32, avatarUpdatedAt: null, srcOverride: null }
+  { size: 32, avatarUpdatedAt: null, srcOverride: null, badge: null }
 )
 
 const failed = ref(false)
@@ -48,13 +52,21 @@ const bgColor = computed(() => {
 })
 
 const fontSize = computed(() => Math.round(props.size * 0.4))
+const badgeFontSize = computed(() => Math.max(10, Math.round(props.size * 0.5)))
 </script>
 
 <style scoped>
+.avatar-wrap {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
 .avatar {
+  width: 100%;
+  height: 100%;
   border-radius: 999px;
   overflow: hidden;
-  flex-shrink: 0;
   display: inline-flex;
 }
 
@@ -74,5 +86,16 @@ const fontSize = computed(() => Math.round(props.size * 0.4))
   color: white;
   font-weight: 600;
   letter-spacing: -0.02em;
+}
+
+.badge {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  line-height: 1;
+  background: var(--bg);
+  border-radius: 999px;
+  padding: 1px;
+  box-shadow: 0 0 0 1px var(--border);
 }
 </style>

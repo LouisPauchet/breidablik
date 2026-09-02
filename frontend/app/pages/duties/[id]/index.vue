@@ -22,12 +22,14 @@
       </template>
       <div class="current-assignee">
         Currently on duty:
-        <Avatar
-          :user-id="duty.current_period.assignee_user_id"
-          :name="members.nameOf(duty.current_period.assignee_user_id)"
-          :avatar-updated-at="members.avatarUpdatedAtOf(duty.current_period.assignee_user_id)"
-          :size="24"
-        />
+        <NuxtLink :to="`/members/${duty.current_period.assignee_user_id}`" class="avatar-link">
+          <Avatar
+            :user-id="duty.current_period.assignee_user_id"
+            :name="members.nameOf(duty.current_period.assignee_user_id)"
+            :avatar-updated-at="members.avatarUpdatedAtOf(duty.current_period.assignee_user_id)"
+            :size="24"
+          />
+        </NuxtLink>
         <strong>{{ members.nameOf(duty.current_period.assignee_user_id) }}</strong>
         (until {{ formatDate(duty.current_period.end_date) }})
       </div>
@@ -127,6 +129,10 @@ async function onDelete() {
   align-items: center;
   flex-wrap: wrap;
   gap: 0.4rem;
+}
+
+.avatar-link {
+  display: inline-flex;
 }
 
 .occurrence-list {
