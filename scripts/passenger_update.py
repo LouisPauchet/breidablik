@@ -100,13 +100,19 @@ def download_asset(repo: str, asset_id: int, dest: Path, token: str | None) -> N
 
 
 def extract(archive_path: Path, dest_dir: Path) -> None:
+    # filter="data" (PEP 706) rejects absolute paths, `..` traversal, and symlink/hardlink
+    # escapes in the archive — without it, a compromised release pipeline (or a
+    # man-in-the-middle on the download) could write files anywhere this process can reach,
+    # not just under dest_dir. Only degrade this to a warning if you've independently verified
+    # the archive's integrity another way — don't silently extract unfiltered.
+    if not hasattr(tarfile, "data_filter"):
+        raise RuntimeError(
+            "This Python interpreter predates tarfile's extraction filters (PEP 706) and "
+            "can't safely extract the release archive. Upgrade to Python 3.11.4+ (3.12+ "
+            "recommended) — the project's own pyproject.toml already requires >=3.11."
+        )
     with tarfile.open(archive_path) as tar:
-        try:
-            tar.extractall(dest_dir, filter="data")
-        except TypeError:
-            # Python < 3.12 doesn't have the `filter` argument. The archive is our own CI
-            # output, not untrusted input, so extracting without it is an acceptable fallback.
-            tar.extractall(dest_dir)
+        tar.extractall(dest_dir, filter="data")
 
 
 def backup(app_dir: Path, backup_dir: Path) -> None:
