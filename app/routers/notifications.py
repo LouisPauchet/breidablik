@@ -49,9 +49,15 @@ async def subscribe(
 
 
 @router.delete("/push-subscriptions")
-async def unsubscribe(endpoint: str, session: AsyncSession = Depends(get_session)):
+async def unsubscribe(
+    endpoint: str,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_session),
+):
     result = await session.execute(
-        select(PushSubscription).where(PushSubscription.endpoint == endpoint)
+        select(PushSubscription).where(
+            PushSubscription.endpoint == endpoint, PushSubscription.user_id == user.id
+        )
     )
     subscription = result.scalar_one_or_none()
     if subscription is not None:
