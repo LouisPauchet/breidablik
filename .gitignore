@@ -35,6 +35,9 @@ app/alembic/versions/__pycache__/
 *.sqlite3
 /*.db
 
+# Security audit inventory - contains live exploit details, never commit/push
+/SECURITY_AUDIT.md
+
 # User-uploaded profile pictures (local disk storage, see app/services/avatars.py) — must
 # survive a Passenger code update untouched, so it's never part of the repo or a release.
 /var/
