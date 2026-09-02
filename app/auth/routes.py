@@ -33,6 +33,9 @@ from app.auth.totp import (
     generate_recovery_codes,
     generate_totp_secret,
     hash_recovery_codes,
+    is_totp_locked,
+    register_totp_failure,
+    register_totp_success,
     verify_and_consume_recovery_code,
     verify_totp_code,
 )
@@ -130,6 +133,10 @@ async def login_2fa(
         raise HTTPException(status_code=400, detail="INVALID_OR_EXPIRED_TOKEN") from exc
 
     user = await user_manager.get(uuid.UUID(payload["user_id"]))
+    session = user_manager.user_db.session
+
+    if is_totp_locked(user):
+        raise HTTPException(status_code=423, detail="2FA_LOCKED")
 
     ok = bool(user.totp_secret) and verify_totp_code(user.totp_secret, data.code)
     if not ok:
@@ -137,10 +144,16 @@ async def login_2fa(
         if matched:
             ok = True
             user.totp_recovery_codes = updated_codes
-            await user_manager.user_db.session.commit()
+            await session.commit()
 
     if not ok:
+        # Persistent per-user counter (not tied to the pending-2FA token) so an attacker who
+        # already has the password can't reset their guess budget by just calling /login
+        # again to mint a fresh pending token — see app/auth/totp.py.
+        await register_totp_failure(session, user)
         raise HTTPException(status_code=400, detail="INVALID_CODE")
+
+    await register_totp_success(session, user)
 
     response = await _finish_login(strategy, user)
     response.delete_cookie(PENDING_2FA_COOKIE)
@@ -331,6 +344,7 @@ async def disable_totp(
 @router.post("/change-password")
 async def change_password(
     data: ChangePasswordRequest,
+    request: Request,
     user: User = Depends(current_active_user),
     user_manager: UserManager = Depends(get_user_manager),
 ):
@@ -344,9 +358,10 @@ async def change_password(
         raise HTTPException(status_code=400, detail="INVALID_CURRENT_PASSWORD")
 
     # UserManager.update's on_after_update hook revokes this device's PIN trust (and every
-    # other device's) since they were established under the credential that just changed —
-    # the session used to make this request is untouched, so this device stays logged in.
-    await user_manager.update(UserUpdate(password=data.new_password), user)
+    # other device's), plus every other login session, since they were established under the
+    # credential that just changed — passing `request` through lets it keep *this* session
+    # (the one making this very request) logged in rather than immediately locking you out.
+    await user_manager.update(UserUpdate(password=data.new_password), user, request=request)
     return {"ok": True}
 
 

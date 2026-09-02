@@ -34,16 +34,26 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
     async def on_after_update(self, user: User, update_dict: dict, request=None) -> None:
         # A leaked/stolen session cookie shouldn't survive the user changing their password —
         # and neither should a trusted device's PIN shortcut, since it was established under
-        # the old credentials.
+        # the old credentials. The request making this very change keeps its own session
+        # (mirrors the existing "this device stays logged in" behavior for device trust) —
+        # only every *other* AccessToken for this user is revoked.
         if "password" in update_dict:
+            from app.auth.backend import auth_backend
             from app.auth.device_trust import revoke_all_device_trusts
+            from app.auth.sessions import revoke_all_access_tokens
 
             await revoke_all_device_trusts(self.user_db.session, user.id)
+            current_token = request.cookies.get(auth_backend.transport.cookie_name) if request else None
+            await revoke_all_access_tokens(self.user_db.session, user.id, except_token=current_token)
 
     async def on_after_reset_password(self, user: User, request=None) -> None:
+        from app.auth.backend import auth_backend
         from app.auth.device_trust import revoke_all_device_trusts
+        from app.auth.sessions import revoke_all_access_tokens
 
         await revoke_all_device_trusts(self.user_db.session, user.id)
+        current_token = request.cookies.get(auth_backend.transport.cookie_name) if request else None
+        await revoke_all_access_tokens(self.user_db.session, user.id, except_token=current_token)
 
 
 async def get_user_manager(
