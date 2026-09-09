@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.0](https://github.com/LouisPauchet/breidablik/compare/breidablik-v0.4.1...breidablik-v0.5.0) (2026-09-02)
+
+
+### Features
+
+* add monthly awards (Duty Master + community award) ([68821b2](https://github.com/LouisPauchet/breidablik/commit/68821b25b6153e2a3846ed3114f4c09f6868833f))
+* surface monthly awards on Home, with badges and a history page ([aae126d](https://github.com/LouisPauchet/breidablik/commit/aae126d0277fc5c0710db936cfe7257923669d82))
+
 ## [0.4.1](https://github.com/LouisPauchet/breidablik/compare/breidablik-v0.4.0...breidablik-v0.4.1) (2026-09-02)
 
 
