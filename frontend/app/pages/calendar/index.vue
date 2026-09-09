@@ -158,7 +158,9 @@ interface UpcomingOccurrence {
   duty_title: string
   due_date: string
   assigned_user_id: string
-  is_done: boolean
+  // null means "private" — not the caller's own occurrence, and the assignee isn't away.
+  // See app/routers/duties.py:_occurrence_visible_to.
+  is_done: boolean | null
 }
 
 const DEFAULT_HORIZON_DAYS = 56
@@ -174,7 +176,7 @@ interface AgendaEntry {
   title: string
   detail: string
   whenLabel: string
-  done?: boolean
+  done?: boolean | null
   href?: string
   editable?: boolean
   absenceId?: string

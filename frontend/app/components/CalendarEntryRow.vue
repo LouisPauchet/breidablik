@@ -27,7 +27,7 @@ defineProps<{
     title: string
     detail: string
     whenLabel: string
-    done?: boolean
+    done?: boolean | null
     href?: string
     editable?: boolean
     absenceId?: string

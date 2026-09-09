@@ -31,7 +31,9 @@ export interface DutyOccurrence {
   period_index: number
   assigned_user_id: string
   is_manual_override: boolean
-  is_done: boolean
+  // null means "private" — only the assignee (or a superuser, or anyone while the assignee
+  // is marked away) gets a real value here. See app/routers/duties.py:_build_occurrence_out.
+  is_done: boolean | null
   done_by_id: string | null
   done_at: string | null
   assignee_away: boolean
@@ -55,6 +57,10 @@ export interface OnDutyToday {
   duty_id: string
   duty_title: string
   assignee_user_id: string
+  // Only populated for the caller's own entry (or a superuser, or while the assignee is
+  // away) — see app/routers/duties.py:on_duty_today.
+  occurrence_id: string | null
+  is_done: boolean | null
 }
 
 export interface DutyCreatePayload {
@@ -134,9 +140,12 @@ export const useDutiesStore = defineStore('duties', {
     },
 
     _patchOccurrence(updated: DutyOccurrence) {
-      if (!this.current) return
-      const idx = this.current.occurrences.findIndex((o) => o.id === updated.id)
-      if (idx !== -1) this.current.occurrences[idx] = updated
+      if (this.current) {
+        const idx = this.current.occurrences.findIndex((o) => o.id === updated.id)
+        if (idx !== -1) this.current.occurrences[idx] = updated
+      }
+      const onDutyEntry = this.onDutyToday.find((e) => e.occurrence_id === updated.id)
+      if (onDutyEntry) onDutyEntry.is_done = updated.is_done
     },
   },
 })

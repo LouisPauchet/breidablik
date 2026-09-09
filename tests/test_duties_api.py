@@ -271,3 +271,229 @@ async def test_upcoming_occurrences_empty_when_no_duties(client, alice):
     resp = await client.get("/api/duties/occurrences/upcoming")
     assert resp.status_code == 200
     assert resp.json() == []
+
+
+async def test_toggle_occurrence_done_rejected_for_non_assignee(client, alice, test_engine):
+    bob = await _create_user(test_engine, "bob@example.com", "Bob")
+    carol = await _create_user(test_engine, "carol@example.com", "Carol")
+    await _login(client, "alice@example.com")
+    create_resp = await client.post(
+        "/api/duties",
+        json={
+            "title": "Bathroom",
+            "start_date": date.today().isoformat(),
+            "task_interval_days": 7,
+            "rotation_interval_days": 7,
+            "assignee_user_ids": [str(bob.id)],
+        },
+    )
+    duty_id = create_resp.json()["id"]
+    detail = await client.get(f"/api/duties/{duty_id}")
+    occurrence_id = detail.json()["occurrences"][0]["id"]
+
+    await client.post("/api/auth/logout")
+    await _login(client, "carol@example.com")
+    resp = await client.post(f"/api/duties/{duty_id}/occurrences/{occurrence_id}/toggle-done")
+    assert resp.status_code == 403
+
+
+async def test_toggle_occurrence_done_allowed_for_assignee_non_superuser(client, alice, test_engine):
+    bob = await _create_user(test_engine, "bob@example.com", "Bob")
+    await _login(client, "alice@example.com")
+    create_resp = await client.post(
+        "/api/duties",
+        json={
+            "title": "Bathroom",
+            "start_date": date.today().isoformat(),
+            "task_interval_days": 7,
+            "rotation_interval_days": 7,
+            "assignee_user_ids": [str(bob.id)],
+        },
+    )
+    duty_id = create_resp.json()["id"]
+    detail = await client.get(f"/api/duties/{duty_id}")
+    occurrence_id = detail.json()["occurrences"][0]["id"]
+
+    await client.post("/api/auth/logout")
+    await _login(client, "bob@example.com")
+    resp = await client.post(f"/api/duties/{duty_id}/occurrences/{occurrence_id}/toggle-done")
+    assert resp.status_code == 200
+    assert resp.json()["is_done"] is True
+    assert resp.json()["done_by_id"] == str(bob.id)
+
+
+async def test_toggle_occurrence_done_allowed_for_superuser_non_assignee(client, alice, test_engine):
+    bob = await _create_user(test_engine, "bob@example.com", "Bob")
+    await _login(client, "alice@example.com")
+    create_resp = await client.post(
+        "/api/duties",
+        json={
+            "title": "Bathroom",
+            "start_date": date.today().isoformat(),
+            "task_interval_days": 7,
+            "rotation_interval_days": 7,
+            "assignee_user_ids": [str(bob.id)],
+        },
+    )
+    duty_id = create_resp.json()["id"]
+    detail = await client.get(f"/api/duties/{duty_id}")
+    occurrence_id = detail.json()["occurrences"][0]["id"]
+
+    # Alice (superuser) is not the assignee but can still toggle it.
+    resp = await client.post(f"/api/duties/{duty_id}/occurrences/{occurrence_id}/toggle-done")
+    assert resp.status_code == 200
+    assert resp.json()["is_done"] is True
+
+
+async def test_occurrence_status_hidden_from_non_assignee(client, alice, test_engine):
+    bob = await _create_user(test_engine, "bob@example.com", "Bob")
+    carol = await _create_user(test_engine, "carol@example.com", "Carol")
+    await _login(client, "alice@example.com")
+    create_resp = await client.post(
+        "/api/duties",
+        json={
+            "title": "Bathroom",
+            "start_date": date.today().isoformat(),
+            "task_interval_days": 7,
+            "rotation_interval_days": 7,
+            "assignee_user_ids": [str(bob.id)],
+        },
+    )
+    duty_id = create_resp.json()["id"]
+
+    await client.post("/api/auth/logout")
+    await _login(client, "carol@example.com")
+    detail = await client.get(f"/api/duties/{duty_id}")
+    occurrence = detail.json()["occurrences"][0]
+    assert occurrence["is_done"] is None
+    assert occurrence["done_by_id"] is None
+    assert occurrence["done_at"] is None
+    # Non-privacy fields (scheduling info) stay visible to everyone.
+    assert occurrence["assigned_user_id"] == str(bob.id)
+    assert occurrence["due_date"] == date.today().isoformat()
+
+
+async def test_upcoming_occurrences_hides_status_for_non_assignee(client, alice, test_engine):
+    bob = await _create_user(test_engine, "bob@example.com", "Bob")
+    carol = await _create_user(test_engine, "carol@example.com", "Carol")
+    await _login(client, "alice@example.com")
+    await client.post(
+        "/api/duties",
+        json={
+            "title": "Bathroom",
+            "start_date": date.today().isoformat(),
+            "task_interval_days": 7,
+            "rotation_interval_days": 7,
+            "assignee_user_ids": [str(bob.id)],
+        },
+    )
+
+    await client.post("/api/auth/logout")
+    await _login(client, "carol@example.com")
+    resp = await client.get("/api/duties/occurrences/upcoming")
+    assert resp.status_code == 200
+    assert all(entry["is_done"] is None for entry in resp.json())
+
+
+async def test_on_duty_today_exposes_occurrence_id_for_own_entry_only(client, alice, test_engine):
+    bob = await _create_user(test_engine, "bob@example.com", "Bob")
+    carol = await _create_user(test_engine, "carol@example.com", "Carol")
+    await _login(client, "alice@example.com")
+    await client.post(
+        "/api/duties",
+        json={
+            "title": "Bathroom",
+            "start_date": date.today().isoformat(),
+            "task_interval_days": 7,
+            "rotation_interval_days": 7,
+            "assignee_user_ids": [str(bob.id)],
+        },
+    )
+    await client.post(
+        "/api/duties",
+        json={
+            "title": "Kitchen",
+            "start_date": date.today().isoformat(),
+            "task_interval_days": 7,
+            "rotation_interval_days": 7,
+            "assignee_user_ids": [str(carol.id)],
+        },
+    )
+
+    await client.post("/api/auth/logout")
+    await _login(client, "bob@example.com")
+    resp = await client.get("/api/duties/on-duty-today")
+    body = {entry["duty_title"]: entry for entry in resp.json()}
+    assert body["Bathroom"]["occurrence_id"] is not None
+    assert body["Bathroom"]["is_done"] is False
+    assert body["Kitchen"]["occurrence_id"] is None
+    assert body["Kitchen"]["is_done"] is None
+
+
+async def test_occurrence_visible_and_toggleable_by_anyone_when_assignee_away(client, alice, test_engine):
+    bob = await _create_user(test_engine, "bob@example.com", "Bob")
+    carol = await _create_user(test_engine, "carol@example.com", "Carol")
+    await _login(client, "alice@example.com")
+    create_resp = await client.post(
+        "/api/duties",
+        json={
+            "title": "Bathroom",
+            "start_date": date.today().isoformat(),
+            "task_interval_days": 7,
+            "rotation_interval_days": 7,
+            "assignee_user_ids": [str(bob.id)],
+        },
+    )
+    duty_id = create_resp.json()["id"]
+    detail = await client.get(f"/api/duties/{duty_id}")
+    occurrence_id = detail.json()["occurrences"][0]["id"]
+
+    # Mark Bob away for a window covering today, logged in as Bob himself (absences are
+    # always created for the calling user).
+    await client.post("/api/auth/logout")
+    await _login(client, "bob@example.com")
+    away_start = date.today().isoformat()
+    away_end = (date.today() + timedelta(days=2)).isoformat()
+    await client.post("/api/absences", json={"start_date": away_start, "end_date": away_end})
+
+    # Carol, unrelated and non-superuser, can now see AND toggle Bob's occurrence.
+    await client.post("/api/auth/logout")
+    await _login(client, "carol@example.com")
+    detail2 = await client.get(f"/api/duties/{duty_id}")
+    occurrence = detail2.json()["occurrences"][0]
+    assert occurrence["is_done"] is False  # visible, not hidden
+    assert occurrence["assignee_away"] is True
+
+    toggled = await client.post(f"/api/duties/{duty_id}/occurrences/{occurrence_id}/toggle-done")
+    assert toggled.status_code == 200
+    assert toggled.json()["is_done"] is True
+    assert toggled.json()["done_by_id"] == str(carol.id)
+
+
+async def test_on_duty_today_resolves_occurrence_for_others_when_assignee_away(client, alice, test_engine):
+    bob = await _create_user(test_engine, "bob@example.com", "Bob")
+    carol = await _create_user(test_engine, "carol@example.com", "Carol")
+    await _login(client, "alice@example.com")
+    await client.post(
+        "/api/duties",
+        json={
+            "title": "Bathroom",
+            "start_date": date.today().isoformat(),
+            "task_interval_days": 7,
+            "rotation_interval_days": 7,
+            "assignee_user_ids": [str(bob.id)],
+        },
+    )
+
+    await client.post("/api/auth/logout")
+    await _login(client, "bob@example.com")
+    away_start = date.today().isoformat()
+    away_end = (date.today() + timedelta(days=2)).isoformat()
+    await client.post("/api/absences", json={"start_date": away_start, "end_date": away_end})
+
+    await client.post("/api/auth/logout")
+    await _login(client, "carol@example.com")
+    resp = await client.get("/api/duties/on-duty-today")
+    body = {entry["duty_title"]: entry for entry in resp.json()}
+    assert body["Bathroom"]["occurrence_id"] is not None
+    assert body["Bathroom"]["is_done"] is False

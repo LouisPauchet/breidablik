@@ -106,18 +106,31 @@ async def _load_occurrence_or_404(
     return occurrence
 
 
-async def _build_occurrence_out(session: AsyncSession, occurrence: DutyOccurrence) -> DutyOccurrenceOut:
+def _occurrence_visible_to(occurrence: DutyOccurrence, user: User, assignee_away: bool) -> bool:
+    """The assignee, a superuser, or — while the assignee is marked away — any member can see
+    this occurrence's completion status and toggle it done. The away exception exists so a
+    duty doesn't just silently go undone (or invisibly stuck) while its assignee can't act on
+    it; someone else stepping in needs to actually see it to fix it.
+    """
+    return occurrence.assigned_user_id == user.id or user.is_superuser or assignee_away
+
+
+async def _build_occurrence_out(
+    session: AsyncSession, occurrence: DutyOccurrence, requesting_user: User
+) -> DutyOccurrenceOut:
     absences_by_user = await load_active_absences_by_user(session, [occurrence.assigned_user_id])
+    away = is_user_away(absences_by_user, occurrence.assigned_user_id, occurrence.due_date)
+    visible = _occurrence_visible_to(occurrence, requesting_user, away)
     return DutyOccurrenceOut(
         id=occurrence.id,
         due_date=occurrence.due_date,
         period_index=occurrence.period_index,
         assigned_user_id=occurrence.assigned_user_id,
         is_manual_override=occurrence.is_manual_override,
-        is_done=occurrence.is_done,
-        done_by_id=occurrence.done_by_id,
-        done_at=occurrence.done_at,
-        assignee_away=is_user_away(absences_by_user, occurrence.assigned_user_id, occurrence.due_date),
+        is_done=occurrence.is_done if visible else None,
+        done_by_id=occurrence.done_by_id if visible else None,
+        done_at=occurrence.done_at if visible else None,
+        assignee_away=away,
     )
 
 
@@ -134,13 +147,62 @@ async def list_duties(session: AsyncSession = Depends(get_session)):
 
 
 @router.get("/on-duty-today", response_model=list[OnDutyTodayOut])
-async def on_duty_today(session: AsyncSession = Depends(get_session)):
-    return await build_on_duty_today(session, today())
+async def on_duty_today(
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_session),
+):
+    entries = await build_on_duty_today(session, today())
+    on_date = today()
+
+    absences_by_user = await load_active_absences_by_user(
+        session, list({e["assignee_user_id"] for e in entries})
+    )
+
+    # Resolve today's occurrence for the caller's own entries, for a superuser, or for any
+    # entry whose assignee is currently away — that's what lets Home's "Your duties" widget
+    # check something off without navigating to the duty detail page, and lets someone else
+    # step in for an away member, without leaking anyone else's completion status.
+    resolvable_duty_ids = [
+        e["duty_id"]
+        for e in entries
+        if e["assignee_user_id"] == user.id
+        or user.is_superuser
+        or is_user_away(absences_by_user, e["assignee_user_id"], on_date)
+    ]
+    occurrence_by_duty_id: dict[uuid.UUID, DutyOccurrence] = {}
+    if resolvable_duty_ids:
+        duties_result = await session.execute(select(Duty).where(Duty.id.in_(resolvable_duty_ids)))
+        for duty in duties_result.scalars():
+            await ensure_occurrences_materialized(session, duty, on_date)
+
+        occ_result = await session.execute(
+            select(DutyOccurrence)
+            .where(DutyOccurrence.duty_id.in_(resolvable_duty_ids), DutyOccurrence.due_date <= on_date)
+            .order_by(DutyOccurrence.due_date.desc())
+        )
+        for occurrence in occ_result.scalars():
+            # Order by due_date desc means the first row seen per duty is the most recent.
+            occurrence_by_duty_id.setdefault(occurrence.duty_id, occurrence)
+
+    out = []
+    for entry in entries:
+        occurrence = occurrence_by_duty_id.get(entry["duty_id"])
+        out.append(
+            OnDutyTodayOut(
+                duty_id=entry["duty_id"],
+                duty_title=entry["duty_title"],
+                assignee_user_id=entry["assignee_user_id"],
+                occurrence_id=occurrence.id if occurrence else None,
+                is_done=occurrence.is_done if occurrence else None,
+            )
+        )
+    return out
 
 
 @router.get("/occurrences/upcoming", response_model=list[UpcomingOccurrenceOut])
 async def upcoming_occurrences(
     horizon_days: int = Query(DEFAULT_HORIZON_DAYS, gt=0, le=730),
+    user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_session),
 ):
     """Flat, cross-duty feed for the combined calendar view — materializes every active
@@ -168,15 +230,25 @@ async def upcoming_occurrences(
         .where(DutyOccurrence.duty_id.in_(duty_by_id.keys()))
         .order_by(DutyOccurrence.due_date)
     )
+    occurrences = list(occ_result.scalars())
+    absences_by_user = await load_active_absences_by_user(
+        session, list({o.assigned_user_id for o in occurrences})
+    )
     return [
         UpcomingOccurrenceOut(
             duty_id=o.duty_id,
             duty_title=duty_by_id[o.duty_id].title,
             due_date=o.due_date,
             assigned_user_id=o.assigned_user_id,
-            is_done=o.is_done,
+            is_done=(
+                o.is_done
+                if _occurrence_visible_to(
+                    o, user, is_user_away(absences_by_user, o.assigned_user_id, o.due_date)
+                )
+                else None
+            ),
         )
-        for o in occ_result.scalars()
+        for o in occurrences
     ]
 
 
@@ -206,7 +278,11 @@ async def create_duty(
 
 
 @router.get("/{duty_id}", response_model=DutyDetailOut)
-async def get_duty(duty_id: uuid.UUID, session: AsyncSession = Depends(get_session)):
+async def get_duty(
+    duty_id: uuid.UUID,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_session),
+):
     duty = await _load_duty_or_404(session, duty_id)
     horizon = today() + timedelta(days=DEFAULT_HORIZON_DAYS)
     await ensure_occurrences_materialized(session, duty, horizon)
@@ -216,23 +292,7 @@ async def get_duty(duty_id: uuid.UUID, session: AsyncSession = Depends(get_sessi
     )
     occurrences = list(occ_result.scalars())
 
-    absences_by_user = await load_active_absences_by_user(
-        session, list({o.assigned_user_id for o in occurrences})
-    )
-    occurrence_outs = [
-        DutyOccurrenceOut(
-            id=o.id,
-            due_date=o.due_date,
-            period_index=o.period_index,
-            assigned_user_id=o.assigned_user_id,
-            is_manual_override=o.is_manual_override,
-            is_done=o.is_done,
-            done_by_id=o.done_by_id,
-            done_at=o.done_at,
-            assignee_away=is_user_away(absences_by_user, o.assigned_user_id, o.due_date),
-        )
-        for o in occurrences
-    ]
+    occurrence_outs = [await _build_occurrence_out(session, o, user) for o in occurrences]
 
     base = await _build_duty_out(session, duty)
     return DutyDetailOut(
@@ -305,11 +365,15 @@ async def toggle_occurrence_done(
     session: AsyncSession = Depends(get_session),
 ):
     occurrence = await _load_occurrence_or_404(session, duty_id, occurrence_id)
+    absences_by_user = await load_active_absences_by_user(session, [occurrence.assigned_user_id])
+    away = is_user_away(absences_by_user, occurrence.assigned_user_id, occurrence.due_date)
+    if not _occurrence_visible_to(occurrence, user, away):
+        raise HTTPException(status_code=403, detail="NOT_YOUR_OCCURRENCE")
     occurrence.is_done = not occurrence.is_done
     occurrence.done_by_id = user.id if occurrence.is_done else None
     occurrence.done_at = datetime.now(timezone.utc) if occurrence.is_done else None
     await session.commit()
-    return await _build_occurrence_out(session, occurrence)
+    return await _build_occurrence_out(session, occurrence, user)
 
 
 @router.patch("/{duty_id}/occurrences/{occurrence_id}", response_model=DutyOccurrenceOut)
@@ -317,17 +381,20 @@ async def reassign_occurrence(
     duty_id: uuid.UUID,
     occurrence_id: uuid.UUID,
     data: OccurrenceReassignIn,
+    user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_session),
 ):
     """Swap a single already-materialized occurrence. For a future period that has no
     occurrences yet, create a DutyOverride instead (POST .../overrides) — that's what
-    materialization consults when generating new rows.
+    materialization consults when generating new rows. Reassignment (who's responsible) is
+    deliberately left open to any member, unlike the completion status itself — see
+    _can_see_occurrence_status/toggle_occurrence_done.
     """
     occurrence = await _load_occurrence_or_404(session, duty_id, occurrence_id)
     occurrence.assigned_user_id = data.assigned_user_id
     occurrence.is_manual_override = True
     await session.commit()
-    return await _build_occurrence_out(session, occurrence)
+    return await _build_occurrence_out(session, occurrence, user)
 
 
 @router.post("/{duty_id}/overrides", response_model=DutyOverrideOut, status_code=201)

@@ -43,7 +43,10 @@ class DutyOccurrenceOut(BaseModel):
     period_index: int
     assigned_user_id: uuid.UUID
     is_manual_override: bool
-    is_done: bool
+    # None means "hidden" — the requesting user isn't the assignee (or a superuser), so
+    # they don't get to see whether it's done, who did it, or when. See
+    # app/routers/duties.py:_build_occurrence_out.
+    is_done: bool | None
     done_by_id: uuid.UUID | None
     done_at: datetime | None
     # Not an ORM column — every route builds this from the Absence table (see
@@ -123,6 +126,10 @@ class OnDutyTodayOut(BaseModel):
     duty_id: uuid.UUID
     duty_title: str
     assignee_user_id: uuid.UUID
+    # Only populated for the requesting user's own entry (or for a superuser) — lets Home's
+    # "Your duties" widget check the occurrence off directly. See app/routers/duties.py:on_duty_today.
+    occurrence_id: uuid.UUID | None = None
+    is_done: bool | None = None
 
 
 class UpcomingOccurrenceOut(BaseModel):
@@ -130,7 +137,7 @@ class UpcomingOccurrenceOut(BaseModel):
     duty_title: str
     due_date: date
     assigned_user_id: uuid.UUID
-    is_done: bool
+    is_done: bool | None
 
 
 class DutyTeamMemberOut(BaseModel):

@@ -38,10 +38,13 @@
     <h2>Upcoming</h2>
     <ul class="occurrence-list">
       <li v-for="occ in duty.occurrences" :key="occ.id" class="occurrence-row">
-        <label class="done-toggle">
+        <label v-if="occ.is_done !== null" class="done-toggle">
           <input type="checkbox" :checked="occ.is_done" @change="onToggleDone(occ.id)" />
           <span :class="{ done: occ.is_done }">{{ formatDate(occ.due_date) }}</span>
         </label>
+        <span v-else class="done-toggle status-hidden" title="Only the assigned person can see whether this is done">
+          🔒 {{ formatDate(occ.due_date) }} <span class="muted">Private</span>
+        </span>
         <select :value="occ.assigned_user_id" @change="onReassign(occ.id, $event)">
           <option v-for="m in members.members" :key="m.id" :value="m.id">{{ m.display_name }}</option>
         </select>
@@ -164,6 +167,10 @@ async function onDelete() {
 .done-toggle span.done {
   text-decoration: line-through;
   color: var(--muted);
+}
+
+.status-hidden {
+  font-size: 0.95rem;
 }
 
 select {

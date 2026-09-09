@@ -10,8 +10,14 @@
     <h2>Your duties</h2>
     <p v-if="!myDuties.length" class="muted">Nothing on your plate right now.</p>
     <ul class="widget-list highlight">
-      <li v-for="entry in myDuties" :key="entry.duty_id">
-        <NuxtLink :to="`/duties/${entry.duty_id}`">
+      <li v-for="entry in myDuties" :key="entry.duty_id" class="my-duty-row">
+        <input
+          v-if="entry.occurrence_id"
+          type="checkbox"
+          :checked="entry.is_done ?? false"
+          @change="onToggleMyDuty(entry)"
+        />
+        <NuxtLink :to="`/duties/${entry.duty_id}`" class="duty-title-link" :class="{ done: entry.is_done }">
           <strong>{{ entry.duty_title }}</strong>
         </NuxtLink>
       </li>
@@ -157,6 +163,11 @@ const myDuties = computed(() =>
   duties.onDutyToday.filter((entry) => entry.assignee_user_id === authStore.user?.id)
 )
 
+async function onToggleMyDuty(entry: { duty_id: string; occurrence_id: string | null }) {
+  if (!entry.occurrence_id) return
+  await duties.toggleOccurrenceDone(entry.duty_id, entry.occurrence_id)
+}
+
 const current = computed(() => awards.summary?.current ?? null)
 const latestDecided = computed(() => awards.summary?.latest_decided ?? null)
 
@@ -239,6 +250,34 @@ async function handleLogout() {
 .widget-list.highlight a {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
   border-color: var(--accent);
+}
+
+.widget-list li.my-duty-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  padding: 0.7rem;
+}
+
+.widget-list.highlight li.my-duty-row {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: var(--accent);
+}
+
+.widget-list a.duty-title-link {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  padding: 0;
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.widget-list a.duty-title-link.done {
+  text-decoration: line-through;
+  color: var(--muted);
 }
 
 .widget-list li.duty-row {
