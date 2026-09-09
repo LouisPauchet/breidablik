@@ -49,7 +49,7 @@ async def test_create_contest_succeeds_for_plain_member(client, alice, test_engi
     assert resp.json()["created_by_id"] == str(bob.id)
 
 
-async def test_log_completion_updates_tally(client, alice, test_engine):
+async def test_log_completion_shows_only_own_count(client, alice, test_engine):
     bob = await _create_user(test_engine, "bob@example.com", "Bob")
     await _login(client, "alice@example.com")
     create_resp = await client.post("/api/contests", json={"title": "Dishwasher", "icon": "🍽️"})
@@ -58,15 +58,62 @@ async def test_log_completion_updates_tally(client, alice, test_engine):
     await client.post(f"/api/contests/{contest_id}/log")
     await client.post(f"/api/contests/{contest_id}/log")
 
+    alice_listing = await client.get("/api/contests")
+    alice_contest = next(c for c in alice_listing.json() if c["id"] == contest_id)
+    assert alice_contest["my_count"] == 2
+    # Nobody else's running total is exposed anywhere in the payload.
+    assert "tally" not in alice_contest
+
     await client.post("/api/auth/logout")
     await _login(client, "bob@example.com")
     await client.post(f"/api/contests/{contest_id}/log")
 
+    bob_listing = await client.get("/api/contests")
+    bob_contest = next(c for c in bob_listing.json() if c["id"] == contest_id)
+    assert bob_contest["my_count"] == 1  # his own, not Alice's 2
+
+
+async def test_cooldown_returns_429_household_wide(client, alice, test_engine):
+    bob = await _create_user(test_engine, "bob@example.com", "Bob")
+    await _login(client, "alice@example.com")
+    create_resp = await client.post(
+        "/api/contests", json={"title": "Dishwasher", "icon": "🍽️", "min_interval_minutes": 240}
+    )
+    contest_id = create_resp.json()["id"]
+    assert create_resp.json()["min_interval_minutes"] == 240
+
+    first = await client.post(f"/api/contests/{contest_id}/log")
+    assert first.status_code == 201
+
+    second = await client.post(f"/api/contests/{contest_id}/log")
+    assert second.status_code == 429
+    assert second.json()["detail"]["code"] == "LOG_TOO_SOON"
+    assert second.json()["detail"]["ready_at"]
+
+    # Bob is blocked too — the cooldown belongs to the chore, not the person.
+    await client.post("/api/auth/logout")
+    await _login(client, "bob@example.com")
+    bobs_attempt = await client.post(f"/api/contests/{contest_id}/log")
+    assert bobs_attempt.status_code == 429
+
     listing = await client.get("/api/contests")
     contest = next(c for c in listing.json() if c["id"] == contest_id)
-    tally = {row["user_id"]: row["count"] for row in contest["tally"]}
-    assert tally[str(alice.id)] == 2
-    assert tally[str(bob.id)] == 1
+    assert contest["next_log_allowed_at"] is not None
+
+
+async def test_home_only_filter_and_show_on_home_flag(client, alice):
+    await _login(client, "alice@example.com")
+    await client.post(
+        "/api/contests", json={"title": "Dishwasher", "icon": "🍽️", "show_on_home": True}
+    )
+    await client.post("/api/contests", json={"title": "Recycling", "icon": "♻️"})
+
+    all_listing = await client.get("/api/contests")
+    assert {c["title"] for c in all_listing.json()} == {"Dishwasher", "Recycling"}
+
+    home_listing = await client.get("/api/contests", params={"home_only": "true"})
+    assert [c["title"] for c in home_listing.json()] == ["Dishwasher"]
+    assert home_listing.json()[0]["show_on_home"] is True
 
 
 async def test_delete_log_entry_own_only(client, alice, test_engine):

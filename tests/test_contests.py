@@ -10,7 +10,14 @@ from app.models.awards import AwardCycle, AwardCyclePhase
 from app.models.contests import ContestAwardResult, ContestDuty, ContestLogEntry
 from app.models.user import User
 from app.services.awards import _compute_contest_winner, run_award_cycle_tick
-from app.services.contests import current_month_bounds, get_month_tally
+from app.services.contests import (
+    TooSoonError,
+    current_month_bounds,
+    get_my_month_counts,
+    list_active_contests_for_user,
+    log_completion,
+    next_log_allowed_at,
+)
 
 ALICE = uuid.uuid4()
 BOB = uuid.uuid4()
@@ -47,7 +54,7 @@ def _at(day: int, hour: int = 12) -> datetime:
     return datetime(CYCLE_MONTH.year, CYCLE_MONTH.month, day, hour, tzinfo=timezone.utc)
 
 
-async def test_get_month_tally_counts_per_user_per_contest(test_engine):
+async def test_get_my_month_counts_only_counts_my_own_entries(test_engine):
     async with _session(test_engine) as session:
         await _seed_users(session, [(ALICE, "Alice"), (BOB, "Bob")])
         contest = ContestDuty(title="Dishwasher", icon="🍽️", created_by_id=ALICE)
@@ -65,8 +72,110 @@ async def test_get_month_tally_counts_per_user_per_contest(test_engine):
         await session.commit()
 
         month_start, month_end = current_month_bounds(CYCLE_MONTH)
-        tally = await get_month_tally(session, [contest.id], month_start, month_end)
-        assert tally[contest.id] == {ALICE: 2, BOB: 1}
+        assert await get_my_month_counts(session, [contest.id], ALICE, month_start, month_end) == {
+            contest.id: 2
+        }
+        # Bob's own view never includes Alice's two entries.
+        assert await get_my_month_counts(session, [contest.id], BOB, month_start, month_end) == {
+            contest.id: 1
+        }
+
+
+async def test_list_active_contests_for_user_exposes_only_own_count(test_engine):
+    async with _session(test_engine) as session:
+        await _seed_users(session, [(ALICE, "Alice"), (BOB, "Bob")])
+        contest = ContestDuty(title="Dishwasher", icon="🍽️", created_by_id=ALICE)
+        session.add(contest)
+        await session.flush()
+        session.add_all(
+            [
+                ContestLogEntry(contest_duty_id=contest.id, user_id=ALICE),
+                ContestLogEntry(contest_duty_id=contest.id, user_id=ALICE),
+                ContestLogEntry(contest_duty_id=contest.id, user_id=BOB),
+            ]
+        )
+        await session.commit()
+
+        alice_view = await list_active_contests_for_user(session, ALICE)
+        bob_view = await list_active_contests_for_user(session, BOB)
+        assert alice_view[0]["my_count"] == 2
+        assert bob_view[0]["my_count"] == 1
+        # No key anywhere in the payload carries another member's tally.
+        assert set(alice_view[0]) == {"contest", "my_count", "next_log_allowed_at"}
+
+
+async def test_home_only_filter(test_engine):
+    async with _session(test_engine) as session:
+        await _seed_users(session, [(ALICE, "Alice")])
+        on_home = ContestDuty(title="Dishwasher", icon="🍽️", created_by_id=ALICE, show_on_home=True)
+        off_home = ContestDuty(title="Recycling", icon="♻️", created_by_id=ALICE, show_on_home=False)
+        session.add_all([on_home, off_home])
+        await session.commit()
+
+        assert len(await list_active_contests_for_user(session, ALICE)) == 2
+        home_view = await list_active_contests_for_user(session, ALICE, home_only=True)
+        assert [e["contest"].title for e in home_view] == ["Dishwasher"]
+
+
+async def test_cooldown_blocks_second_log_household_wide(test_engine):
+    async with _session(test_engine) as session:
+        await _seed_users(session, [(ALICE, "Alice"), (BOB, "Bob")])
+        contest = ContestDuty(
+            title="Dishwasher", icon="🍽️", created_by_id=ALICE, min_interval_minutes=240
+        )
+        session.add(contest)
+        await session.commit()
+
+        await log_completion(session, contest, ALICE)
+
+        # Alice can't log again...
+        try:
+            await log_completion(session, contest, ALICE)
+            raise AssertionError("expected TooSoonError")
+        except TooSoonError as exc:
+            assert exc.ready_at > datetime.now(timezone.utc)
+
+        # ...and neither can Bob — the cooldown is household-wide, not per person.
+        try:
+            await log_completion(session, contest, BOB)
+            raise AssertionError("expected TooSoonError")
+        except TooSoonError:
+            pass
+
+
+async def test_cooldown_elapsed_allows_logging_again(test_engine):
+    async with _session(test_engine) as session:
+        await _seed_users(session, [(ALICE, "Alice")])
+        contest = ContestDuty(
+            title="Dishwasher", icon="🍽️", created_by_id=ALICE, min_interval_minutes=60
+        )
+        session.add(contest)
+        await session.flush()
+        # Last log was 2 hours ago — the 60-minute cooldown has elapsed.
+        session.add(
+            ContestLogEntry(
+                contest_duty_id=contest.id,
+                user_id=ALICE,
+                logged_at=datetime.now(timezone.utc) - timedelta(hours=2),
+            )
+        )
+        await session.commit()
+
+        assert await next_log_allowed_at(session, contest) is None
+        entry = await log_completion(session, contest, ALICE)
+        assert entry.id is not None
+
+
+async def test_zero_interval_means_no_cooldown(test_engine):
+    async with _session(test_engine) as session:
+        await _seed_users(session, [(ALICE, "Alice")])
+        contest = ContestDuty(title="Dishwasher", icon="🍽️", created_by_id=ALICE, min_interval_minutes=0)
+        session.add(contest)
+        await session.commit()
+
+        await log_completion(session, contest, ALICE)
+        await log_completion(session, contest, ALICE)
+        assert await next_log_allowed_at(session, contest) is None
 
 
 async def test_finalize_creates_result_per_active_contest_none_for_inactive(test_engine, monkeypatch):

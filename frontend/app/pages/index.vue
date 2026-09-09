@@ -23,6 +23,17 @@
       </li>
     </ul>
 
+    <template v-if="contests.homeContests.length">
+      <h2>Pitch in</h2>
+      <div class="contest-list">
+        <ContestLogCard
+          v-for="contest in contests.homeContests"
+          :key="contest.id"
+          :contest="contest"
+        />
+      </div>
+    </template>
+
     <h2>Household duties</h2>
     <p v-if="!duties.onDutyToday.length" class="muted">No active duties yet.</p>
     <ul class="widget-list">
@@ -164,6 +175,7 @@ const authStore = useAuthStore()
 const duties = useDutiesStore()
 const members = useMembersStore()
 const awards = useAwardsStore()
+const contests = useContestsStore()
 const router = useRouter()
 
 const quote = ref<Quote | null>(null)
@@ -172,6 +184,7 @@ await Promise.all([
   members.ensureLoaded(),
   duties.fetchOnDutyToday(),
   awards.fetchSummary(),
+  contests.fetchHomeContests(),
   $fetch<Quote>('/api/quote-of-the-day')
     .then((res) => (quote.value = res))
     .catch(() => {}),
@@ -332,6 +345,13 @@ async function handleLogout() {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+}
+
+.contest-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
 }
 
 .suggest-row {

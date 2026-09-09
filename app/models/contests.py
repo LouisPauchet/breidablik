@@ -27,6 +27,13 @@ class ContestDuty(Base):
     title: Mapped[str] = mapped_column(String(150))
     description: Mapped[str | None] = mapped_column(Text, default=None)
     icon: Mapped[str] = mapped_column(String(32))
+    # Household-wide cooldown: once anyone logs this, nobody can log it again until this many
+    # minutes have passed. Models the physical reality (the dishwasher can't genuinely be
+    # emptied twice in a row) and doubles as anti-spam. 0 means no limit.
+    min_interval_minutes: Mapped[int] = mapped_column(Integer, default=0)
+    # Surfaces this contest on the Home screen with its own "I did this" button, for chores
+    # done often enough that navigating to /contests each time would be friction.
+    show_on_home: Mapped[bool] = mapped_column(default=False)
     is_active: Mapped[bool] = mapped_column(default=True)
     created_by_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("user.id"))
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
