@@ -16,6 +16,7 @@ from app.routers.admin import router as admin_router
 from app.routers.avatars import router as avatars_router
 from app.routers.awards import router as awards_router
 from app.routers.calendar_feed import router as calendar_feed_router
+from app.routers.contests import router as contests_router
 from app.routers.dashboard import router as dashboard_router
 from app.routers.duties import router as duties_router
 from app.routers.duty_teams import router as duty_teams_router
@@ -71,6 +72,7 @@ app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(avatars_router)
 app.include_router(awards_router)
+app.include_router(contests_router)
 app.include_router(dashboard_router)
 app.include_router(duties_router)
 app.include_router(duty_teams_router)

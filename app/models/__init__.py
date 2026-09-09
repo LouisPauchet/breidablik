@@ -1,5 +1,6 @@
 from app.models.absence import Absence
 from app.models.awards import AwardCategorySuggestion, AwardCategoryVote, AwardCycle, AwardCyclePhase
+from app.models.contests import ContestAwardResult, ContestDuty, ContestLogEntry
 from app.models.dashboard import DashboardConfig
 from app.models.duty import Duty, DutyAssignee, DutyOccurrence, DutyOverride, DutyTeam, DutyTeamMember
 from app.models.event import Event, EventRSVP, EventSeries, EventType, RSVPStatus
@@ -15,6 +16,9 @@ __all__ = [
     "AwardCategoryVote",
     "AwardCycle",
     "AwardCyclePhase",
+    "ContestAwardResult",
+    "ContestDuty",
+    "ContestLogEntry",
     "DashboardConfig",
     "Duty",
     "DutyAssignee",

@@ -5,6 +5,14 @@ export interface AwardVoteTally {
   vote_count: number
 }
 
+export interface ContestResult {
+  contest_duty_id: string
+  title: string
+  icon: string
+  winner_id: string | null
+  completion_count: number | null
+}
+
 export interface AwardCycle {
   id: string
   month: string
@@ -18,6 +26,7 @@ export interface AwardCycle {
   community_award_vote_count: number | null
   community_award_vetoed: boolean
   finalized_at: string | null
+  contest_results: ContestResult[]
 }
 
 export interface AwardCurrentState extends AwardCycle {
@@ -33,7 +42,7 @@ export interface AwardSummary {
 
 export interface MemberAwardBadge {
   month: string
-  kind: 'duty_master' | 'community'
+  kind: 'duty_master' | 'community' | 'contest'
   title: string | null
   emoji: string | null
 }

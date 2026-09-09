@@ -129,6 +129,24 @@
         >
           Veto this award
         </button>
+
+        <template v-for="result in latestDecided.contest_results" :key="result.contest_duty_id">
+          <div v-if="result.winner_id" class="winner-row">
+            <NuxtLink :to="`/members/${result.winner_id}`" class="avatar-link">
+              <Avatar
+                :user-id="result.winner_id"
+                :name="members.nameOf(result.winner_id)"
+                :avatar-updated-at="members.avatarUpdatedAtOf(result.winner_id)"
+                :badge="result.icon"
+                :size="40"
+              />
+            </NuxtLink>
+            <span
+              ><strong>{{ result.icon }} {{ result.title }}</strong> —
+              {{ members.nameOf(result.winner_id) }} ({{ result.completion_count }})</span
+            >
+          </div>
+        </template>
       </div>
     </template>
 

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.backend import current_active_user, current_superuser
 from app.db import get_session
 from app.models.awards import AwardCategorySuggestion, AwardCategoryVote, AwardCycle, AwardCyclePhase
+from app.models.contests import ContestAwardResult, ContestDuty
 from app.models.user import User
 from app.schemas.awards import (
     AwardCurrentStateOut,
@@ -19,6 +20,7 @@ from app.schemas.awards import (
     AwardVetoIn,
     AwardVoteIn,
     AwardVoteTallyOut,
+    ContestResultOut,
     MemberAwardBadgeOut,
     MemberAwardHistoryOut,
 )
@@ -36,8 +38,23 @@ from app.timeutils import today
 router = APIRouter(prefix="/api/awards", tags=["awards"], dependencies=[Depends(current_active_user)])
 
 
-def _build_cycle_out(cycle: AwardCycle) -> AwardCycleOut:
+async def _build_cycle_out(session: AsyncSession, cycle: AwardCycle) -> AwardCycleOut:
     suggestion = cycle.drawn_suggestion
+    contest_rows = await session.execute(
+        select(ContestAwardResult, ContestDuty.title, ContestDuty.icon)
+        .join(ContestDuty, ContestDuty.id == ContestAwardResult.contest_duty_id)
+        .where(ContestAwardResult.cycle_id == cycle.id)
+    )
+    contest_results = [
+        ContestResultOut(
+            contest_duty_id=result.contest_duty_id,
+            title=title,
+            icon=icon,
+            winner_id=result.winner_id,
+            completion_count=result.completion_count,
+        )
+        for result, title, icon in contest_rows.all()
+    ]
     return AwardCycleOut(
         id=cycle.id,
         month=cycle.month,
@@ -51,6 +68,7 @@ def _build_cycle_out(cycle: AwardCycle) -> AwardCycleOut:
         community_award_vote_count=cycle.community_award_vote_count,
         community_award_vetoed=cycle.community_award_vetoed,
         finalized_at=cycle.finalized_at,
+        contest_results=contest_results,
     )
 
 
@@ -70,14 +88,14 @@ async def get_summary(
             tally = await get_live_vote_tally(session, current.id)
             votes = [AwardVoteTallyOut(candidate_user_id=uid, vote_count=count) for uid, count in tally]
         current_out = AwardCurrentStateOut(
-            **_build_cycle_out(current).model_dump(),
+            **(await _build_cycle_out(session, current)).model_dump(),
             my_suggestion_submitted=await get_my_suggestion_submitted(session, current.id, user.id),
             my_vote_candidate_id=await get_my_vote(session, current.id, user.id),
             votes=votes,
         )
 
     latest_decided = await get_latest_decided_cycle(session)
-    latest_decided_out = _build_cycle_out(latest_decided) if latest_decided is not None else None
+    latest_decided_out = await _build_cycle_out(session, latest_decided) if latest_decided is not None else None
 
     return AwardSummaryOut(current=current_out, latest_decided=latest_decided_out)
 

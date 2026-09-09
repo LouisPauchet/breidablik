@@ -9,6 +9,14 @@ class AwardVoteTallyOut(BaseModel):
     vote_count: int
 
 
+class ContestResultOut(BaseModel):
+    contest_duty_id: uuid.UUID
+    title: str
+    icon: str
+    winner_id: uuid.UUID | None
+    completion_count: int | None
+
+
 class AwardCycleOut(BaseModel):
     id: uuid.UUID
     month: date
@@ -22,6 +30,7 @@ class AwardCycleOut(BaseModel):
     community_award_vote_count: int | None
     community_award_vetoed: bool
     finalized_at: datetime | None
+    contest_results: list[ContestResultOut] = []
 
 
 class AwardCurrentStateOut(AwardCycleOut):

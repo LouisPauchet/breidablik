@@ -3,7 +3,10 @@
     <PageHeader title="Duties">
       <NuxtLink to="/duties/new" class="btn-primary">+ New</NuxtLink>
     </PageHeader>
-    <NuxtLink to="/duties/teams" class="teams-link">Manage duty teams &rarr;</NuxtLink>
+    <div class="duties-links">
+      <NuxtLink to="/duties/teams" class="teams-link">Manage duty teams &rarr;</NuxtLink>
+      <NuxtLink to="/contests" class="teams-link">Contest duties &rarr;</NuxtLink>
+    </div>
 
     <p v-if="!duties.duties.length" class="muted">No duties yet. Create the first one.</p>
 
@@ -45,12 +48,18 @@ function formatDate(iso: string) {
 </script>
 
 <style scoped>
+.duties-links {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
 .teams-link {
   display: inline-block;
   color: var(--link);
   text-decoration: none;
   font-size: 0.85rem;
-  margin-bottom: 1rem;
 }
 
 .btn-primary {

@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.awards import AwardCategorySuggestion, AwardCycle
+from app.models.contests import ContestAwardResult, ContestDuty
 from app.models.duty import Duty
 from app.models.event import Event
 from app.models.notification import Notification
@@ -139,7 +140,18 @@ async def notify_award_voting_window_open(
 
 
 async def notify_award_results_decided(session: AsyncSession, cycle: AwardCycle) -> None:
+    contest_rows = list(
+        (
+            await session.execute(
+                select(ContestAwardResult, ContestDuty.title, ContestDuty.icon)
+                .join(ContestDuty, ContestDuty.id == ContestAwardResult.contest_duty_id)
+                .where(ContestAwardResult.cycle_id == cycle.id)
+            )
+        ).all()
+    )
+
     winner_ids = [uid for uid in (cycle.duty_master_winner_id, cycle.community_award_winner_id) if uid]
+    winner_ids.extend(r.winner_id for r, _, _ in contest_rows if r.winner_id)
     names_by_id: dict[uuid.UUID, str] = {}
     if winner_ids:
         result = await session.execute(select(User.id, User.display_name).where(User.id.in_(winner_ids)))
@@ -158,10 +170,19 @@ async def notify_award_results_decided(session: AsyncSession, cycle: AwardCycle)
     else:
         community_line = "No community award this month."
 
+    # Only surface contests that actually had activity — a "No X this month" line per empty
+    # contest would get noisy fast as more contest duties are created.
+    contest_lines = [
+        f"{icon} {title}: {names_by_id.get(result.winner_id, 'Someone')}"
+        for result, title, icon in contest_rows
+        if result.winner_id
+    ]
+
+    body = " · ".join([duty_master_line, community_line, *contest_lines])
     await _broadcast_to_active_users(
         session,
         kind="award_results",
         title="This month's awards are in!",
-        body=f"{duty_master_line} · {community_line}",
+        body=body,
         url="/",
     )

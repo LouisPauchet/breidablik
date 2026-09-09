@@ -26,6 +26,7 @@ from sqlalchemy.orm import selectinload
 
 from app.config import get_settings
 from app.models.awards import AwardCategorySuggestion, AwardCategoryVote, AwardCycle, AwardCyclePhase
+from app.models.contests import ContestAwardResult, ContestDuty, ContestLogEntry
 from app.models.duty import DutyOccurrence
 from app.services.notifications import (
     notify_award_results_decided,
@@ -151,6 +152,32 @@ async def _tally_votes(session: AsyncSession, cycle_id: uuid.UUID) -> tuple[uuid
     return winner, max_count
 
 
+async def _compute_contest_winner(
+    session: AsyncSession, contest_duty_id: uuid.UUID, month_start: date, month_end: date
+) -> tuple[uuid.UUID | None, int | None]:
+    """Same shape as _compute_duty_master, but over ContestLogEntry — no "on time" concept
+    here (there's no due date to be on time for; every logged entry counts).
+    """
+    zone = get_settings().zone_info
+    result = await session.execute(
+        select(ContestLogEntry).where(ContestLogEntry.contest_duty_id == contest_duty_id)
+    )
+    by_user: dict[uuid.UUID, list[datetime]] = defaultdict(list)
+    for entry in result.scalars():
+        logged_at = entry.logged_at
+        if logged_at.tzinfo is None:
+            logged_at = logged_at.replace(tzinfo=timezone.utc)
+        if month_start <= logged_at.astimezone(zone).date() <= month_end:
+            by_user[entry.user_id].append(logged_at)
+
+    if not by_user:
+        return None, None
+
+    max_count = max(len(times) for times in by_user.values())
+    winner = _reached_winning_tally_first(by_user, max_count)
+    return winner, max_count
+
+
 async def _finalize_cycle(session: AsyncSession, cycle: AwardCycle) -> None:
     month_end = _next_month(cycle.month) - timedelta(days=1)
     winner_id, win_count = await _compute_duty_master(session, cycle.month, month_end)
@@ -161,6 +188,22 @@ async def _finalize_cycle(session: AsyncSession, cycle: AwardCycle) -> None:
         winner_id2, vote_count = await _tally_votes(session, cycle.id)
         cycle.community_award_winner_id = winner_id2
         cycle.community_award_vote_count = vote_count
+
+    # One ContestAwardResult per currently-active contest duty — this only ever runs once
+    # per cycle (finalized_at IS NULL guard in _finalize_due_cycles), so no upsert needed.
+    contest_duties_result = await session.execute(select(ContestDuty).where(ContestDuty.is_active.is_(True)))
+    for contest_duty in contest_duties_result.scalars():
+        contest_winner_id, contest_count = await _compute_contest_winner(
+            session, contest_duty.id, cycle.month, month_end
+        )
+        session.add(
+            ContestAwardResult(
+                cycle_id=cycle.id,
+                contest_duty_id=contest_duty.id,
+                winner_id=contest_winner_id,
+                completion_count=contest_count,
+            )
+        )
 
     cycle.phase = AwardCyclePhase.decided
     cycle.finalized_at = datetime.now(timezone.utc)
@@ -334,5 +377,15 @@ async def list_member_badges(session: AsyncSession, user_id: uuid.UUID) -> list[
                     "emoji": suggestion.emoji if suggestion else None,
                 }
             )
+
+    contest_result = await session.execute(
+        select(AwardCycle.month, ContestDuty.title, ContestDuty.icon)
+        .join(ContestAwardResult, ContestAwardResult.cycle_id == AwardCycle.id)
+        .join(ContestDuty, ContestDuty.id == ContestAwardResult.contest_duty_id)
+        .where(ContestAwardResult.winner_id == user_id)
+    )
+    for month, title, icon in contest_result.all():
+        badges.append({"month": month, "kind": "contest", "title": title, "emoji": icon})
+
     badges.sort(key=lambda b: b["month"], reverse=True)
     return badges
