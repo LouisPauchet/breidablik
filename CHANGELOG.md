@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.6.0](https://github.com/LouisPauchet/breidablik/compare/breidablik-v0.5.0...breidablik-v0.6.0) (2026-09-09)
+
+
+### Features
+
+* add contest duties with a monthly best-performer award ([a146b0a](https://github.com/LouisPauchet/breidablik/commit/a146b0a5102f3460ad9a80a34a300982be480996))
+* make duty completion status private to the assignee ([5625964](https://github.com/LouisPauchet/breidablik/commit/56259644ee5385794f9fff14edc58006c97d8975))
+* private contest counts, a logging cooldown, and a home-screen option ([cbc6663](https://github.com/LouisPauchet/breidablik/commit/cbc66633769d5243d33cf7682d2d20f6aec90094))
+
 ## [0.5.0](https://github.com/LouisPauchet/breidablik/compare/breidablik-v0.4.1...breidablik-v0.5.0) (2026-09-02)
 
 
