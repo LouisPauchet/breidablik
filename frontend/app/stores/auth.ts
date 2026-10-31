@@ -4,6 +4,7 @@ export interface AuthUser {
   display_name: string
   is_2fa_enabled: boolean
   is_superuser: boolean
+  password_login_enabled: boolean
   calendar_feed_token: string
   birthday: string | null
   avatar_updated_at: string | null
@@ -51,6 +52,13 @@ export const useAuthStore = defineStore('auth', {
         body: { pin },
       })
       this.user = res.user
+    },
+
+    async setPasswordLogin(enabled: boolean) {
+      this.user = await $fetch<AuthUser>('/api/auth/password-login', {
+        method: 'POST',
+        body: { enabled },
+      })
     },
 
     async loginPasskey() {

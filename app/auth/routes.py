@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse
 from fastapi_users import exceptions as fu_exceptions
 from fastapi_users.authentication.strategy.db import DatabaseStrategy
 from fastapi_users.jwt import decode_jwt
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.backend import auth_backend, current_active_user
@@ -28,6 +28,7 @@ from app.auth.device_trust import (
     is_locked,
     register_pin_failure,
     register_pin_success,
+    revoke_all_device_trusts,
     verify_pin,
 )
 from app.auth.tokens import make_token, read_token
@@ -45,6 +46,7 @@ from app.auth.totp import (
 from app.auth.users import UserManager, get_user_manager
 from app.config import get_settings
 from app.db import get_session
+from app.models.passkey import Passkey
 from app.models.user import DeviceTrust, User
 from app.schemas.auth import (
     ChangePasswordRequest,
@@ -52,6 +54,7 @@ from app.schemas.auth import (
     InviteAcceptRequest,
     LoginRequest,
     PasswordConfirmRequest,
+    PasswordLoginRequest,
     PasswordResetRedeemRequest,
     PinLoginRequest,
     TotpEnrollConfirmRequest,
@@ -76,6 +79,7 @@ def _serialize_user(user: User) -> dict:
         "display_name": user.display_name,
         "is_2fa_enabled": user.is_2fa_enabled,
         "is_superuser": user.is_superuser,
+        "password_login_enabled": user.password_login_enabled,
         "calendar_feed_token": user.calendar_feed_token,
         "birthday": user.birthday.isoformat() if user.birthday else None,
         "avatar_updated_at": user.avatar_updated_at.isoformat() if user.avatar_updated_at else None,
@@ -122,6 +126,9 @@ async def login(
     user = await user_manager.authenticate(credentials)
     if user is None or not user.is_active:
         raise HTTPException(status_code=400, detail="LOGIN_BAD_CREDENTIALS")
+    if not user.password_login_enabled:
+        # Only reachable with the right password, so it tells an attacker nothing new.
+        raise HTTPException(status_code=403, detail="PASSWORD_LOGIN_DISABLED")
 
     if user.is_2fa_enabled:
         return _pending_2fa_response(user)
@@ -195,6 +202,9 @@ async def login_pin(
     user = await user_manager.get(device.user_id)
     if user is None or not user.is_active:
         raise HTTPException(status_code=400, detail="LOGIN_BAD_CREDENTIALS")
+    if not user.password_login_enabled:
+        # A PIN is a shortcut past the password, so it goes when password sign-in does.
+        raise HTTPException(status_code=403, detail="PASSWORD_LOGIN_DISABLED")
     return await _finish_login(strategy, user)
 
 
@@ -351,6 +361,29 @@ async def disable_totp(
     user.totp_recovery_codes = None
     await session.commit()
     return {"ok": True}
+
+
+@router.post("/password-login")
+async def set_password_login(
+    data: PasswordLoginRequest,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Passwordless mode: with it off, only passkeys (and linked accounts) can sign this
+    member in. Requires a passkey first, so turning it off can't strand the account; an
+    admin reset link turns it back on if every passkey is lost.
+    """
+    if not data.enabled:
+        passkeys = await session.execute(select(func.count()).select_from(Passkey).where(Passkey.user_id == user.id))
+        if passkeys.scalar_one() == 0:
+            raise HTTPException(status_code=400, detail="NO_PASSKEY")
+
+    user.password_login_enabled = data.enabled
+    await session.commit()
+    if not data.enabled:
+        await revoke_all_device_trusts(session, user.id)
+    await session.refresh(user)
+    return _serialize_user(user)
 
 
 @router.post("/change-password")

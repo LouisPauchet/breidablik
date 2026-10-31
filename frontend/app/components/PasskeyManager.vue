@@ -29,6 +29,19 @@
       <button type="button" class="add-btn" :disabled="busy" @click="onAdd">Add a passkey</button>
     </template>
 
+    <div v-if="passkeys.length" class="passwordless">
+      <h4>Password sign-in</h4>
+      <p v-if="authStore.user?.password_login_enabled" class="muted small">
+        Turn it off to sign in only with passkeys (or linked accounts). Your PIN shortcuts stop
+        working too. {{ passkeys.length < 2 ? 'Add a second passkey first so losing one device does not lock you out.' : '' }}
+        If you lose every passkey, an admin can send you a reset link to turn it back on.
+      </p>
+      <p v-else class="muted small">Password and PIN sign-in are off for your account.</p>
+      <button type="button" :disabled="busy" @click="onTogglePasswordLogin">
+        {{ authStore.user?.password_login_enabled ? 'Turn off password sign-in' : 'Turn password sign-in back on' }}
+      </button>
+    </div>
+
     <p v-if="notice" :class="noticeIsError ? 'error' : 'status-ok'">{{ notice }}</p>
   </div>
 </template>
@@ -45,6 +58,8 @@ const ERRORS: Record<string, string> = {
   LAST_SIGNIN_METHOD: "That's your only way to sign in — add another passkey or turn password login back on first.",
   PASSKEY_REGISTRATION_FAILED: 'That passkey could not be verified — try again.',
 }
+
+const authStore = useAuthStore()
 
 const enabled = ref(false)
 const passkeys = ref<PasskeyItem[]>([])
@@ -108,6 +123,30 @@ async function onAdd() {
   }
 }
 
+async function onTogglePasswordLogin() {
+  const turningOff = !!authStore.user?.password_login_enabled
+  if (
+    turningOff &&
+    !window.confirm('Turn off password and PIN sign-in? You will only be able to sign in with a passkey.')
+  ) {
+    return
+  }
+  busy.value = true
+  setNotice('', false)
+  try {
+    await authStore.setPasswordLogin(!turningOff)
+    setNotice(turningOff ? 'Password sign-in is off.' : 'Password sign-in is back on.', false)
+  } catch (err) {
+    const detail = (err as { data?: { detail?: string } })?.data?.detail ?? ''
+    setNotice(
+      detail === 'NO_PASSKEY' ? 'Add a passkey first.' : 'Could not change that — try again.',
+      true,
+    )
+  } finally {
+    busy.value = false
+  }
+}
+
 async function onRemove(p: PasskeyItem) {
   if (!window.confirm(`Remove "${p.label || 'this passkey'}"?`)) return
   busy.value = true
@@ -159,6 +198,16 @@ try {
 .status-ok {
   color: #16a34a;
   font-size: 0.85rem;
+}
+
+.passwordless {
+  border-top: 1px solid var(--border);
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+}
+
+.passwordless h4 {
+  margin: 0 0 0.4rem;
 }
 
 .passkey-list {

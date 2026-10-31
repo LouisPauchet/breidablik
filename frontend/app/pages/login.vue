@@ -96,6 +96,10 @@ onMounted(async () => {
   }
 })
 
+function isPasswordLoginDisabled(err: unknown) {
+  return (err as { data?: { detail?: string } })?.data?.detail === 'PASSWORD_LOGIN_DISABLED'
+}
+
 async function submitPasskey() {
   passkeyError.value = ''
   loading.value = true
@@ -131,8 +135,10 @@ async function submitCredentials() {
       authStore.user = result.user
       await router.push('/')
     }
-  } catch {
-    error.value = 'Incorrect email or password.'
+  } catch (err) {
+    error.value = isPasswordLoginDisabled(err)
+      ? 'Password sign-in is turned off for this account — use your passkey.'
+      : 'Incorrect email or password.'
   } finally {
     loading.value = false
   }
@@ -157,8 +163,10 @@ async function submitPin() {
   try {
     await authStore.loginPin(pin.value)
     await router.push('/')
-  } catch {
-    pinError.value = 'This device is not trusted yet, or the PIN is wrong — log in with your password.'
+  } catch (err) {
+    pinError.value = isPasswordLoginDisabled(err)
+      ? 'PIN sign-in is turned off for this account — use your passkey.'
+      : 'This device is not trusted yet, or the PIN is wrong — log in with your password.'
   } finally {
     loading.value = false
   }

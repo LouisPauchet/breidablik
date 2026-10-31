@@ -10,6 +10,10 @@ class PasswordConfirmRequest(BaseModel):
     password: str
 
 
+class PasswordLoginRequest(BaseModel):
+    enabled: bool
+
+
 class TwoFactorVerifyRequest(BaseModel):
     code: str
 
