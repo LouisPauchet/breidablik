@@ -7,16 +7,20 @@ ties the ceremony to the browser that started it.
 
 import json
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
+from fastapi_users.authentication.strategy.db import DatabaseStrategy
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from webauthn import (
+    generate_authentication_options,
     generate_registration_options,
     options_to_json,
+    verify_authentication_response,
     verify_registration_response,
 )
 from webauthn.helpers import base64url_to_bytes, bytes_to_base64url
@@ -27,9 +31,9 @@ from webauthn.helpers.structs import (
     UserVerificationRequirement,
 )
 
-from app.auth.backend import current_active_user
+from app.auth.backend import auth_backend, current_active_user
 from app.auth.oauth import count_signin_methods
-from app.auth.routes import cookie_kwargs
+from app.auth.routes import _finish_login, cookie_kwargs
 from app.auth.tokens import make_token, read_token
 from app.config import Settings, get_settings
 from app.db import get_session
@@ -40,6 +44,8 @@ router = APIRouter(prefix="/api/auth/passkeys", tags=["passkeys"])
 
 REGISTRATION_AUD = "breidablik:webauthn-registration"
 REGISTRATION_COOKIE = "webauthn_registration"
+LOGIN_AUD = "breidablik:webauthn-login"
+LOGIN_COOKIE = "webauthn_login"
 CEREMONY_LIFETIME_SECONDS = 300
 
 
@@ -148,6 +154,85 @@ async def verify_registration(
 
     response = JSONResponse(_serialize(passkey))
     response.delete_cookie(REGISTRATION_COOKIE)
+    return response
+
+
+class LoginVerifyRequest(BaseModel):
+    credential: dict
+
+
+@router.post("/login/options")
+async def login_options(settings: Settings = Depends(require_passkeys_enabled)):
+    """Public. No allowCredentials: the passkeys are discoverable, so the browser offers
+    whichever one it holds for this site and the server learns who it is from the answer.
+    """
+    options = generate_authentication_options(
+        rp_id=settings.webauthn_effective_rp_id,
+        user_verification=UserVerificationRequirement.REQUIRED,
+    )
+    token = make_token(
+        LOGIN_AUD, CEREMONY_LIFETIME_SECONDS, challenge=bytes_to_base64url(options.challenge)
+    )
+    response = JSONResponse(json.loads(options_to_json(options)))
+    response.set_cookie(LOGIN_COOKIE, token, **cookie_kwargs(CEREMONY_LIFETIME_SECONDS))
+    return response
+
+
+@router.post("/login/verify")
+async def login_verify(
+    data: LoginVerifyRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    strategy: DatabaseStrategy = Depends(auth_backend.get_strategy),
+    settings: Settings = Depends(require_passkeys_enabled),
+):
+    # One generic failure for every cause, so the endpoint doesn't reveal which credential
+    # ids exist or why an attempt was refused.
+    failed = HTTPException(status_code=400, detail="PASSKEY_LOGIN_FAILED")
+
+    # The challenge is stateless: the cookie is cleared on success, but the server keeps no
+    # record of used challenges. A captured assertion is bounded by the cookie's 5-minute
+    # life and the signature counter check below, not by a one-time-use table.
+    token = request.cookies.get(LOGIN_COOKIE)
+    if not token:
+        raise failed
+    try:
+        challenge = base64url_to_bytes(read_token(token, LOGIN_AUD)["challenge"])
+        credential_id = data.credential["id"]
+    except Exception as exc:
+        raise failed from exc
+
+    result = await session.execute(select(Passkey).where(Passkey.credential_id == credential_id))
+    passkey = result.scalar_one_or_none()
+    if passkey is None:
+        raise failed
+    user = await session.get(User, passkey.user_id)
+    if user is None or not user.is_active:
+        raise failed
+
+    try:
+        verified = verify_authentication_response(
+            credential=data.credential,
+            expected_challenge=challenge,
+            expected_rp_id=settings.webauthn_effective_rp_id,
+            expected_origin=settings.webauthn_origin,
+            credential_public_key=passkey.public_key,
+            credential_current_sign_count=passkey.sign_count,
+            require_user_verification=True,
+        )
+        # A discoverable credential reports whose it is; it must be the owner we found.
+        user_handle = (data.credential.get("response") or {}).get("userHandle")
+        if user_handle is not None and base64url_to_bytes(user_handle) != user.id.bytes:
+            raise ValueError("user handle mismatch")
+    except Exception as exc:
+        raise failed from exc
+
+    passkey.sign_count = verified.new_sign_count
+    passkey.last_used_at = datetime.now(timezone.utc)
+    await session.commit()
+
+    response = await _finish_login(strategy, user)
+    response.delete_cookie(LOGIN_COOKIE)
     return response
 
 

@@ -53,6 +53,22 @@ export const useAuthStore = defineStore('auth', {
       this.user = res.user
     },
 
+    async loginPasskey() {
+      const options = await $fetch<PublicKeyCredentialRequestOptionsJSON>('/api/auth/passkeys/login/options', {
+        method: 'POST',
+      })
+      const credential = (await navigator.credentials.get({
+        publicKey: PublicKeyCredential.parseRequestOptionsFromJSON(options),
+      })) as PublicKeyCredential | null
+      if (!credential) return
+      const res = await $fetch<{ user: AuthUser }>('/api/auth/passkeys/login/verify', {
+        method: 'POST',
+        body: { credential: credential.toJSON() },
+      })
+      this.user = res.user
+      this.initialized = true
+    },
+
     async regenerateCalendarFeedToken() {
       this.user = await $fetch<AuthUser>('/api/auth/calendar-feed/regenerate', { method: 'POST' })
     },

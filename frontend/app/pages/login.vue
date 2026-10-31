@@ -19,7 +19,12 @@
       </button>
     </form>
 
-    <div v-if="step === 'credentials' && providers.length" class="card">
+    <div v-if="step === 'credentials' && passkeysAvailable" class="card">
+      <button type="button" :disabled="loading" @click="submitPasskey">Sign in with a passkey</button>
+      <p v-if="passkeyError" class="error">{{ passkeyError }}</p>
+    </div>
+
+    <div v-if="step === 'credentials' && (providers.length || oauthNotice)" class="card">
       <p v-if="oauthNotice" class="error">{{ oauthNotice }}</p>
       <!-- Plain links, not router links: the server redirects on to the provider. -->
       <a
@@ -73,13 +78,39 @@ const step = ref<'credentials' | 'twofa'>(route.query.oauth === '2fa' ? 'twofa' 
 const providers = ref<string[]>([])
 const oauthNotice = OAUTH_NOTICES[String(route.query.oauth ?? '')] ?? ''
 
+const passkeysAvailable = ref(false)
+const passkeyError = ref('')
+
 onMounted(async () => {
   try {
     providers.value = await $fetch<string[]>('/api/auth/oauth/providers')
   } catch {
     // Optional feature: password login still works without the buttons.
   }
+  try {
+    const config = await $fetch<{ enabled: boolean }>('/api/auth/passkeys/config')
+    passkeysAvailable.value =
+      config.enabled && 'PublicKeyCredential' in window && typeof PublicKeyCredential.parseRequestOptionsFromJSON === 'function'
+  } catch {
+    // Same: just no passkey button.
+  }
 })
+
+async function submitPasskey() {
+  passkeyError.value = ''
+  loading.value = true
+  try {
+    await authStore.loginPasskey()
+    if (authStore.user) await router.push('/')
+  } catch (err) {
+    // Dismissing the browser's passkey prompt is not worth an error message.
+    if ((err as { name?: string })?.name !== 'NotAllowedError') {
+      passkeyError.value = 'Could not sign in with a passkey — try another way.'
+    }
+  } finally {
+    loading.value = false
+  }
+}
 const email = ref('')
 const password = ref('')
 const code = ref('')
