@@ -36,3 +36,15 @@ class AdminUserInvite(BaseModel):
     display_name: str = Field(min_length=1, max_length=100)
     email: EmailStr
     is_superuser: bool = False
+
+
+class AdminPasswordResetRequest(BaseModel):
+    """`reset_2fa` is carried inside the signed link and only applied when the member redeems
+    it — see app/routers/admin.py."""
+
+    reset_2fa: bool = False
+
+
+class AdminPasswordResetResponse(BaseModel):
+    token: str
+    expires_in: int

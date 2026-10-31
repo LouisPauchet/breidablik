@@ -15,10 +15,18 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.backend import current_superuser
-from app.auth.users import UserManager, get_user_manager
+from app.auth.users import RESET_PASSWORD_TOKEN_LIFETIME_SECONDS, UserManager, get_user_manager
 from app.db import get_session
 from app.models.user import User
-from app.schemas.user import AdminUserInvite, UserCreate, UserRead
+from app.schemas.user import (
+    AdminPasswordResetRequest,
+    AdminPasswordResetResponse,
+    AdminUserInvite,
+    UserCreate,
+    UserRead,
+)
+from app.services.audit import log_audit
+from app.services.notifications import notify_password_reset_issued
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(current_superuser)])
 
@@ -81,3 +89,32 @@ async def regenerate_invite(user_id: uuid.UUID, session: AsyncSession = Depends(
     await session.commit()
     await session.refresh(user)
     return user
+
+
+@router.post("/users/{user_id}/password-reset", response_model=AdminPasswordResetResponse)
+async def issue_password_reset(
+    user_id: uuid.UUID,
+    data: AdminPasswordResetRequest,
+    admin: User = Depends(current_superuser),
+    user_manager: UserManager = Depends(get_user_manager),
+    session: AsyncSession = Depends(get_session),
+):
+    """Mints a link token for the admin to hand over (see /api/auth/password-reset/{token}).
+    Nothing about the account changes until the member redeems it — `reset_2fa` just rides in
+    the signed token so a link that's never used never strips anyone's 2FA.
+    """
+    result = await session.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="USER_NOT_FOUND")
+    if not user.is_active:
+        # Pending invites have invite regenerate; deactivated members must be reactivated first.
+        raise HTTPException(status_code=400, detail="USER_NOT_ACTIVE")
+
+    token = user_manager.issue_reset_token(user, reset_2fa=data.reset_2fa)
+
+    # Never log the token itself: it is a bearer credential until redeemed.
+    await log_audit(session, admin, "user.password_reset_issued", user, reset_2fa=data.reset_2fa)
+    await notify_password_reset_issued(session, user)
+
+    return AdminPasswordResetResponse(token=token, expires_in=RESET_PASSWORD_TOKEN_LIFETIME_SECONDS)

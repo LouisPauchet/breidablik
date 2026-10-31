@@ -97,6 +97,17 @@ async def notify_event_created(session: AsyncSession, event: Event, creator: Use
         await send_push_to_user(session, recipient.id, {"title": title, "body": body, "url": url})
 
 
+async def notify_password_reset_issued(session: AsyncSession, user: User) -> None:
+    title = "Password reset link issued"
+    body = "An admin generated a password reset link for your account."
+    session.add(
+        Notification(user_id=user.id, kind="password_reset_issued", title=title, body=body, url="/profile")
+    )
+    await session.commit()
+
+    await send_push_to_user(session, user.id, {"title": title, "body": body, "url": "/profile"})
+
+
 async def notify_admins_of_update(session: AsyncSession, version: str) -> None:
     """Called by the Passenger update script (scripts/passenger_update.py) after it swaps in
     a new release and runs migrations — lets admins know the deploy actually landed, since
