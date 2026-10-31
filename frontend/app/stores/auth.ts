@@ -107,6 +107,24 @@ export const useAuthStore = defineStore('auth', {
       this.initialized = true
     },
 
+    async fetchPasswordReset(token: string) {
+      return await $fetch<{ display_name: string; email: string }>(`/api/auth/password-reset/${token}`)
+    },
+
+    // Resolves with requires_2fa when the member still has 2FA on: the server has then set the
+    // pending-2FA cookie, and the caller finishes sign-in with verify2fa().
+    async redeemPasswordReset(token: string, password: string) {
+      const res = await $fetch<LoginResult>(`/api/auth/password-reset/${token}`, {
+        method: 'POST',
+        body: { password },
+      })
+      if (res.user) {
+        this.user = res.user
+        this.initialized = true
+      }
+      return res
+    },
+
     async logout() {
       await $fetch('/api/auth/logout', { method: 'POST' })
       this.user = null

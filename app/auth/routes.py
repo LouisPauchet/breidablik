@@ -10,9 +10,12 @@ import uuid
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
+import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
+from fastapi_users import exceptions as fu_exceptions
 from fastapi_users.authentication.strategy.db import DatabaseStrategy
+from fastapi_users.jwt import decode_jwt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -49,6 +52,7 @@ from app.schemas.auth import (
     InviteAcceptRequest,
     LoginRequest,
     PasswordConfirmRequest,
+    PasswordResetRedeemRequest,
     PinLoginRequest,
     TotpEnrollConfirmRequest,
     TwoFactorVerifyRequest,
@@ -97,6 +101,13 @@ async def _finish_login(strategy: DatabaseStrategy, user: User) -> JSONResponse:
     return json_response
 
 
+def _pending_2fa_response(user: User) -> JSONResponse:
+    token = make_token(PENDING_2FA_AUD, PENDING_LIFETIME_SECONDS, user_id=str(user.id))
+    response = JSONResponse({"requires_2fa": True})
+    response.set_cookie(PENDING_2FA_COOKIE, token, **_cookie_kwargs(PENDING_LIFETIME_SECONDS))
+    return response
+
+
 @router.post("/login")
 async def login(
     data: LoginRequest,
@@ -109,10 +120,7 @@ async def login(
         raise HTTPException(status_code=400, detail="LOGIN_BAD_CREDENTIALS")
 
     if user.is_2fa_enabled:
-        token = make_token(PENDING_2FA_AUD, PENDING_LIFETIME_SECONDS, user_id=str(user.id))
-        response = JSONResponse({"requires_2fa": True})
-        response.set_cookie(PENDING_2FA_COOKIE, token, **_cookie_kwargs(PENDING_LIFETIME_SECONDS))
-        return response
+        return _pending_2fa_response(user)
 
     return await _finish_login(strategy, user)
 
@@ -404,4 +412,68 @@ async def accept_invite(
     await session.commit()
     await session.refresh(user)
 
+    return await _finish_login(strategy, user)
+
+
+async def _load_reset_target(user_manager: UserManager, token: str) -> tuple[User, dict]:
+    """Validates an admin-issued reset link the same way fastapi-users' reset_password() does
+    (signature, audience, expiry, and that the password hasn't changed since — which is what
+    makes a link single-use), but split out so GET can check a link without consuming it and
+    expiry (410) can be told apart from a bad link (404).
+    """
+    try:
+        claims = decode_jwt(
+            token, user_manager.reset_password_token_secret, [user_manager.reset_password_token_audience]
+        )
+    except jwt.ExpiredSignatureError as exc:
+        raise HTTPException(status_code=410, detail="RESET_EXPIRED") from exc
+    except jwt.PyJWTError as exc:
+        raise HTTPException(status_code=404, detail="RESET_NOT_FOUND") from exc
+
+    try:
+        user = await user_manager.get(user_manager.parse_id(claims["sub"]))
+        fingerprint = claims["password_fgpt"]
+    except (KeyError, fu_exceptions.InvalidID, fu_exceptions.UserNotExists) as exc:
+        raise HTTPException(status_code=404, detail="RESET_NOT_FOUND") from exc
+
+    unchanged, _ = user_manager.password_helper.verify_and_update(user.hashed_password, fingerprint)
+    if not unchanged or not user.is_active:
+        raise HTTPException(status_code=404, detail="RESET_NOT_FOUND")
+    return user, claims
+
+
+@router.get("/password-reset/{token}")
+async def get_password_reset(token: str, user_manager: UserManager = Depends(get_user_manager)):
+    user, _ = await _load_reset_target(user_manager, token)
+    return {"display_name": user.display_name, "email": user.email}
+
+
+@router.post("/password-reset/{token}")
+async def redeem_password_reset(
+    token: str,
+    data: PasswordResetRedeemRequest,
+    user_manager: UserManager = Depends(get_user_manager),
+    session: AsyncSession = Depends(get_session),
+    strategy: DatabaseStrategy = Depends(auth_backend.get_strategy),
+):
+    user, claims = await _load_reset_target(user_manager, token)
+
+    # Also fires on_after_reset_password: every session and trusted-device PIN predating the
+    # reset is revoked.
+    user = await user_manager.reset_password(token, data.password)
+
+    user.password_login_enabled = True
+    if claims.get("reset_2fa"):
+        user.is_2fa_enabled = False
+        user.totp_secret = None
+        user.totp_recovery_codes = None
+        user.totp_failed_attempts = 0
+        user.totp_locked_until = None
+    await session.commit()
+    await session.refresh(user)
+
+    # A link must not be a way around the second factor: unless the admin chose to reset
+    # 2FA too, a member who still has it enabled finishes the normal TOTP step.
+    if user.is_2fa_enabled:
+        return _pending_2fa_response(user)
     return await _finish_login(strategy, user)
