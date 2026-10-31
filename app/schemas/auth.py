@@ -10,6 +10,10 @@ class PasswordConfirmRequest(BaseModel):
     password: str
 
 
+class PasswordLoginRequest(BaseModel):
+    enabled: bool
+
+
 class TwoFactorVerifyRequest(BaseModel):
     code: str
 
@@ -35,4 +39,8 @@ class ChangePasswordRequest(BaseModel):
 
 
 class InviteAcceptRequest(BaseModel):
+    password: str = Field(min_length=8)
+
+
+class PasswordResetRedeemRequest(BaseModel):
     password: str = Field(min_length=8)

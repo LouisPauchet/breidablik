@@ -42,6 +42,9 @@ python -m app.cli create-superuser --email you@example.com --password yourpasswo
 ```
 
 Run the test suite with `pytest` (uses an in-memory SQLite DB, no Postgres needed for tests).
+The migration tests are the exception: the existing migrations use Postgres-only SQL, so they
+are skipped unless `MIGRATION_TEST_DATABASE_URL` points at a **scratch** Postgres database
+(e.g. `postgresql+asyncpg://postgres:pw@localhost:5432/migtest`) — they wipe it. CI provides one.
 
 ## Docker deployment
 
@@ -145,6 +148,43 @@ Registration is admin-created only (no public sign-up) — add members from Prof
 members once logged in as a superuser, or bootstrap the very first account with
 `python -m app.cli create-superuser`. Each member can optionally enable TOTP 2FA and set up a
 PIN for quick-unlock on a specific trusted device, both from their Profile page.
+
+### Admin tools
+
+From Profile → Manage members, an admin can, for each member:
+
+- **Reset password link** — generates a one-time link (valid 24 hours) to send the member
+  yourself; there is no email. Opening it lets them choose a new password, and signs out every
+  other session and PIN shortcut. If they also lost their authenticator, tick "Also reset their
+  2FA": that is applied only when they redeem the link, so an unused link changes nothing. A
+  link on its own never skips the 2FA step for a member who still has it.
+- **Deactivate / reactivate** — blocks sign-in and revokes sessions but keeps everything the
+  member owns (tasks, duties, contest history). The last active admin cannot be deactivated or
+  demoted, and you cannot do either to yourself.
+- **Sign out everywhere**, and **make / remove admin**.
+
+Every one of these is recorded in the **Audit log** (linked from the members page), and the
+affected member gets an in-app notification (except on deactivation, since they can't sign in
+to see it).
+
+### Sign in with Google or GitHub (optional)
+
+Off unless configured: set `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` and/or
+`GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`, and register
+`<your origin>/api/auth/oauth/google/callback` (or `.../github/callback`) as the redirect URI
+with the provider. Behind a proxy, also set `OAUTH_REDIRECT_BASE` to the public origin.
+This never creates accounts: a member links their Google/GitHub identity from their Profile
+while signed in, and can then sign in with it. Identities are matched on the provider's account
+id, never on email. Members with 2FA still enter their code.
+
+### Passkeys (optional)
+
+Off unless `WEBAUTHN_ORIGIN` is set to the exact origin the app is served from (HTTPS, or
+`http://localhost` for development). `WEBAUTHN_RP_ID` defaults to that origin's hostname.
+Members add passkeys from their Profile and can sign in with one; a passkey counts as two factors,
+so it skips the TOTP step. A member with a passkey can also **turn off password and PIN sign-in**
+entirely. Changing `WEBAUTHN_ORIGIN` / `WEBAUTHN_RP_ID` later invalidates existing passkeys and
+would lock out anyone who turned passwords off — an admin reset link turns password sign-in back on.
 
 ## Notifications
 

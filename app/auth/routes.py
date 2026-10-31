@@ -10,10 +10,13 @@ import uuid
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
+import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
+from fastapi_users import exceptions as fu_exceptions
 from fastapi_users.authentication.strategy.db import DatabaseStrategy
-from sqlalchemy import select
+from fastapi_users.jwt import decode_jwt
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.backend import auth_backend, current_active_user
@@ -25,6 +28,7 @@ from app.auth.device_trust import (
     is_locked,
     register_pin_failure,
     register_pin_success,
+    revoke_all_device_trusts,
     verify_pin,
 )
 from app.auth.tokens import make_token, read_token
@@ -42,6 +46,7 @@ from app.auth.totp import (
 from app.auth.users import UserManager, get_user_manager
 from app.config import get_settings
 from app.db import get_session
+from app.models.passkey import Passkey
 from app.models.user import DeviceTrust, User
 from app.schemas.auth import (
     ChangePasswordRequest,
@@ -49,6 +54,8 @@ from app.schemas.auth import (
     InviteAcceptRequest,
     LoginRequest,
     PasswordConfirmRequest,
+    PasswordLoginRequest,
+    PasswordResetRedeemRequest,
     PinLoginRequest,
     TotpEnrollConfirmRequest,
     TwoFactorVerifyRequest,
@@ -72,13 +79,14 @@ def _serialize_user(user: User) -> dict:
         "display_name": user.display_name,
         "is_2fa_enabled": user.is_2fa_enabled,
         "is_superuser": user.is_superuser,
+        "password_login_enabled": user.password_login_enabled,
         "calendar_feed_token": user.calendar_feed_token,
         "birthday": user.birthday.isoformat() if user.birthday else None,
         "avatar_updated_at": user.avatar_updated_at.isoformat() if user.avatar_updated_at else None,
     }
 
 
-def _cookie_kwargs(max_age: int) -> dict:
+def cookie_kwargs(max_age: int) -> dict:
     settings = get_settings()
     return {
         "max_age": max_age,
@@ -97,6 +105,17 @@ async def _finish_login(strategy: DatabaseStrategy, user: User) -> JSONResponse:
     return json_response
 
 
+def set_pending_2fa_cookie(response, user: User) -> None:
+    token = make_token(PENDING_2FA_AUD, PENDING_LIFETIME_SECONDS, user_id=str(user.id))
+    response.set_cookie(PENDING_2FA_COOKIE, token, **cookie_kwargs(PENDING_LIFETIME_SECONDS))
+
+
+def _pending_2fa_response(user: User) -> JSONResponse:
+    response = JSONResponse({"requires_2fa": True})
+    set_pending_2fa_cookie(response, user)
+    return response
+
+
 @router.post("/login")
 async def login(
     data: LoginRequest,
@@ -107,12 +126,12 @@ async def login(
     user = await user_manager.authenticate(credentials)
     if user is None or not user.is_active:
         raise HTTPException(status_code=400, detail="LOGIN_BAD_CREDENTIALS")
+    if not user.password_login_enabled:
+        # Only reachable with the right password, so it tells an attacker nothing new.
+        raise HTTPException(status_code=403, detail="PASSWORD_LOGIN_DISABLED")
 
     if user.is_2fa_enabled:
-        token = make_token(PENDING_2FA_AUD, PENDING_LIFETIME_SECONDS, user_id=str(user.id))
-        response = JSONResponse({"requires_2fa": True})
-        response.set_cookie(PENDING_2FA_COOKIE, token, **_cookie_kwargs(PENDING_LIFETIME_SECONDS))
-        return response
+        return _pending_2fa_response(user)
 
     return await _finish_login(strategy, user)
 
@@ -183,6 +202,9 @@ async def login_pin(
     user = await user_manager.get(device.user_id)
     if user is None or not user.is_active:
         raise HTTPException(status_code=400, detail="LOGIN_BAD_CREDENTIALS")
+    if not user.password_login_enabled:
+        # A PIN is a shortcut past the password, so it goes when password sign-in does.
+        raise HTTPException(status_code=403, detail="PASSWORD_LOGIN_DISABLED")
     return await _finish_login(strategy, user)
 
 
@@ -255,7 +277,7 @@ async def enroll_device_trust(
     await session.commit()
 
     response = JSONResponse({"ok": True})
-    response.set_cookie(DEVICE_ID_COOKIE, device_id, **_cookie_kwargs(DEVICE_COOKIE_MAX_AGE))
+    response.set_cookie(DEVICE_ID_COOKIE, device_id, **cookie_kwargs(DEVICE_COOKIE_MAX_AGE))
     return response
 
 
@@ -286,7 +308,7 @@ async def start_totp_enrollment(user: User = Depends(current_active_user)):
     qr_data_uri = build_qr_data_uri(secret, user.email)
 
     response = JSONResponse({"secret": secret, "qr_data_uri": qr_data_uri})
-    response.set_cookie(PENDING_TOTP_COOKIE, token, **_cookie_kwargs(PENDING_LIFETIME_SECONDS))
+    response.set_cookie(PENDING_TOTP_COOKIE, token, **cookie_kwargs(PENDING_LIFETIME_SECONDS))
     return response
 
 
@@ -339,6 +361,29 @@ async def disable_totp(
     user.totp_recovery_codes = None
     await session.commit()
     return {"ok": True}
+
+
+@router.post("/password-login")
+async def set_password_login(
+    data: PasswordLoginRequest,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Passwordless mode: with it off, only passkeys (and linked accounts) can sign this
+    member in. Requires a passkey first, so turning it off can't strand the account; an
+    admin reset link turns it back on if every passkey is lost.
+    """
+    if not data.enabled:
+        passkeys = await session.execute(select(func.count()).select_from(Passkey).where(Passkey.user_id == user.id))
+        if passkeys.scalar_one() == 0:
+            raise HTTPException(status_code=400, detail="NO_PASSKEY")
+
+    user.password_login_enabled = data.enabled
+    await session.commit()
+    if not data.enabled:
+        await revoke_all_device_trusts(session, user.id)
+    await session.refresh(user)
+    return _serialize_user(user)
 
 
 @router.post("/change-password")
@@ -404,4 +449,68 @@ async def accept_invite(
     await session.commit()
     await session.refresh(user)
 
+    return await _finish_login(strategy, user)
+
+
+async def _load_reset_target(user_manager: UserManager, token: str) -> tuple[User, dict]:
+    """Validates an admin-issued reset link the same way fastapi-users' reset_password() does
+    (signature, audience, expiry, and that the password hasn't changed since — which is what
+    makes a link single-use), but split out so GET can check a link without consuming it and
+    expiry (410) can be told apart from a bad link (404).
+    """
+    try:
+        claims = decode_jwt(
+            token, user_manager.reset_password_token_secret, [user_manager.reset_password_token_audience]
+        )
+    except jwt.ExpiredSignatureError as exc:
+        raise HTTPException(status_code=410, detail="RESET_EXPIRED") from exc
+    except jwt.PyJWTError as exc:
+        raise HTTPException(status_code=404, detail="RESET_NOT_FOUND") from exc
+
+    try:
+        user = await user_manager.get(user_manager.parse_id(claims["sub"]))
+        fingerprint = claims["password_fgpt"]
+    except (KeyError, fu_exceptions.InvalidID, fu_exceptions.UserNotExists) as exc:
+        raise HTTPException(status_code=404, detail="RESET_NOT_FOUND") from exc
+
+    unchanged, _ = user_manager.password_helper.verify_and_update(user.hashed_password, fingerprint)
+    if not unchanged or not user.is_active:
+        raise HTTPException(status_code=404, detail="RESET_NOT_FOUND")
+    return user, claims
+
+
+@router.get("/password-reset/{token}")
+async def get_password_reset(token: str, user_manager: UserManager = Depends(get_user_manager)):
+    user, _ = await _load_reset_target(user_manager, token)
+    return {"display_name": user.display_name, "email": user.email}
+
+
+@router.post("/password-reset/{token}")
+async def redeem_password_reset(
+    token: str,
+    data: PasswordResetRedeemRequest,
+    user_manager: UserManager = Depends(get_user_manager),
+    session: AsyncSession = Depends(get_session),
+    strategy: DatabaseStrategy = Depends(auth_backend.get_strategy),
+):
+    user, claims = await _load_reset_target(user_manager, token)
+
+    # Also fires on_after_reset_password: every session and trusted-device PIN predating the
+    # reset is revoked.
+    user = await user_manager.reset_password(token, data.password)
+
+    user.password_login_enabled = True
+    if claims.get("reset_2fa"):
+        user.is_2fa_enabled = False
+        user.totp_secret = None
+        user.totp_recovery_codes = None
+        user.totp_failed_attempts = 0
+        user.totp_locked_until = None
+    await session.commit()
+    await session.refresh(user)
+
+    # A link must not be a way around the second factor: unless the admin chose to reset
+    # 2FA too, a member who still has it enabled finishes the normal TOTP step.
+    if user.is_2fa_enabled:
+        return _pending_2fa_response(user)
     return await _finish_login(strategy, user)

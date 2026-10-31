@@ -3,6 +3,7 @@ from collections.abc import AsyncGenerator
 
 from fastapi import Depends
 from fastapi_users import BaseUserManager, UUIDIDMixin
+from fastapi_users.jwt import generate_jwt
 from fastapi_users.db import SQLAlchemyUserDatabase
 from fastapi_users_db_sqlalchemy.access_token import SQLAlchemyAccessTokenDatabase
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,12 +25,33 @@ async def get_access_token_db(
     yield SQLAlchemyAccessTokenDatabase(session, AccessToken)
 
 
+RESET_PASSWORD_TOKEN_LIFETIME_SECONDS = 24 * 3600
+
+
 class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
     def __init__(self, user_db: SQLAlchemyUserDatabase):
         settings = get_settings()
         self.reset_password_token_secret = settings.secret_key
+        # Links are sent by hand (no email), so the 1h default would often expire in transit.
+        self.reset_password_token_lifetime_seconds = RESET_PASSWORD_TOKEN_LIFETIME_SECONDS
         self.verification_token_secret = settings.secret_key
         super().__init__(user_db)
+
+    def issue_reset_token(self, user: User, **claims) -> str:
+        """Same token fastapi-users' forgot_password() builds (so reset_password() accepts it,
+        and it stops working once the password changes via the embedded fingerprint), but
+        returned to the caller instead of handed to on_after_forgot_password — an admin
+        hands the link over, there's no email to send. Extra `claims` ride along signed.
+        """
+        token_data = {
+            "sub": str(user.id),
+            "password_fgpt": self.password_helper.hash(user.hashed_password),
+            "aud": self.reset_password_token_audience,
+            **claims,
+        }
+        return generate_jwt(
+            token_data, self.reset_password_token_secret, self.reset_password_token_lifetime_seconds
+        )
 
     async def on_after_update(self, user: User, update_dict: dict, request=None) -> None:
         # A leaked/stolen session cookie shouldn't survive the user changing their password —

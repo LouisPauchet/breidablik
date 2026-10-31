@@ -1,6 +1,10 @@
 <template>
   <div v-if="authStore.user?.is_superuser">
-    <PageHeader title="Members" back="/profile" />
+    <PageHeader title="Members" back="/profile">
+      <NuxtLink to="/admin/audit" class="audit-link">Audit log</NuxtLink>
+    </PageHeader>
+
+    <p v-if="actionError" class="error">{{ actionError }}</p>
 
     <ul class="member-list">
       <li v-for="member in members" :key="member.id" class="member-row">
@@ -17,7 +21,7 @@
             {{ member.display_name }}
             <span v-if="member.is_superuser" class="badge">admin</span>
             <span v-if="isPending(member)" class="badge pending">pending invite</span>
-            <span v-else-if="!member.is_active" class="badge inactive">inactive</span>
+            <span v-else-if="!member.is_active" class="badge inactive">deactivated</span>
           </div>
           <div class="muted">{{ member.email }}</div>
           <div v-if="member.birthday" class="muted">🎂 {{ formatBirthday(member.birthday) }}</div>
@@ -29,15 +33,58 @@
             </button>
             <button type="button" @click="onResendInvite(member)">Resend invite</button>
           </template>
-          <button v-else type="button" @click="onToggleActive(member)">
-            {{ member.is_active ? 'Deactivate' : 'Activate' }}
+          <button
+            v-else-if="!member.is_active || member.id !== authStore.user?.id"
+            type="button"
+            @click="onToggleActive(member)"
+          >
+            {{ member.is_active ? 'Deactivate' : 'Reactivate' }}
           </button>
-          <button type="button" @click="onToggleSuperuser(member)">
+          <button v-if="member.is_active" type="button" @click="onStartReset(member)">
+            Reset password link
+          </button>
+          <button
+            v-if="member.id !== authStore.user?.id"
+            type="button"
+            @click="onToggleSuperuser(member)"
+          >
             {{ member.is_superuser ? 'Remove admin' : 'Make admin' }}
+          </button>
+          <button
+            v-if="member.is_active && member.id !== authStore.user?.id"
+            type="button"
+            @click="onRevokeSessions(member)"
+          >
+            Sign out everywhere
           </button>
         </div>
       </li>
     </ul>
+
+    <div v-if="resetTarget" class="card reset-panel">
+      <p>
+        Password reset link for <strong>{{ resetTarget.display_name }}</strong>. Nothing changes
+        until they open it and choose a new password.
+      </p>
+      <label v-if="resetTarget.is_2fa_enabled && !resetUrl" class="checkbox-row">
+        <input v-model="reset2fa" type="checkbox" />
+        Also reset their 2FA (they lost their authenticator)
+      </label>
+      <template v-if="resetUrl">
+        <p class="muted small">Valid for 24 hours and works once. Send it to them yourself:</p>
+        <div class="feed-row">
+          <input :value="resetUrl" readonly @focus="($event.target as HTMLInputElement).select()" />
+          <button type="button" @click="onCopyReset">{{ copiedReset ? 'Copied!' : 'Copy' }}</button>
+        </div>
+      </template>
+      <p v-if="resetError" class="error">{{ resetError }}</p>
+      <div class="reset-buttons">
+        <button v-if="!resetUrl" type="button" class="submit-btn" :disabled="resetLoading" @click="onGenerateReset">
+          Generate link
+        </button>
+        <button type="button" @click="onCloseReset">{{ resetUrl ? 'Done' : 'Cancel' }}</button>
+      </div>
+    </div>
 
     <h2>Invite a member</h2>
     <p class="muted small">
@@ -82,6 +129,7 @@ interface Member {
   birthday: string | null
   avatar_updated_at: string | null
   invite_token: string | null
+  deactivated_at: string | null
 }
 
 const authStore = useAuthStore()
@@ -150,6 +198,50 @@ async function onResendInvite(member: Member) {
   await onCopyInvite(member)
 }
 
+const resetTarget = ref<Member | null>(null)
+const reset2fa = ref(false)
+const resetUrl = ref('')
+const resetError = ref('')
+const resetLoading = ref(false)
+const copiedReset = ref(false)
+
+function onStartReset(member: Member) {
+  resetTarget.value = member
+  reset2fa.value = false
+  resetUrl.value = ''
+  resetError.value = ''
+}
+
+function onCloseReset() {
+  resetTarget.value = null
+  resetUrl.value = ''
+}
+
+async function onGenerateReset() {
+  if (!resetTarget.value) return
+  resetError.value = ''
+  resetLoading.value = true
+  try {
+    const res = await $fetch<{ token: string }>(
+      `/api/admin/users/${resetTarget.value.id}/password-reset`,
+      { method: 'POST', body: { reset_2fa: reset2fa.value } },
+    )
+    resetUrl.value = `${window.location.origin}/reset-password/${res.token}`
+    await onCopyReset()
+  } catch {
+    resetError.value = 'Could not generate a link for that member.'
+  } finally {
+    resetLoading.value = false
+  }
+}
+
+async function onCopyReset() {
+  if (await copyToClipboard(resetUrl.value)) {
+    copiedReset.value = true
+    setTimeout(() => (copiedReset.value = false), 2000)
+  }
+}
+
 async function submit() {
   error.value = ''
   loading.value = true
@@ -175,26 +267,64 @@ async function submit() {
   }
 }
 
+const actionError = ref('')
+
+const ACTION_ERRORS: Record<string, string> = {
+  CANNOT_ACT_ON_SELF: "You can't do that to your own account.",
+  LAST_ADMIN: 'There must always be at least one active admin.',
+  USER_PENDING_INVITE: 'That member has not accepted their invite yet.',
+}
+
+function describeActionError(err: unknown) {
+  const detail = (err as { data?: { detail?: string } })?.data?.detail ?? ''
+  return ACTION_ERRORS[detail] ?? 'That did not work — try again.'
+}
+
 async function onToggleActive(member: Member) {
-  const updated = await $fetch<Member>(`/api/users/${member.id}`, {
-    method: 'PATCH',
-    body: { is_active: !member.is_active },
-  })
-  Object.assign(member, updated)
+  actionError.value = ''
+  try {
+    const updated = await $fetch<Member>(
+      `/api/admin/users/${member.id}/${member.is_active ? 'deactivate' : 'reactivate'}`,
+      { method: 'POST' },
+    )
+    Object.assign(member, updated)
+  } catch (err) {
+    actionError.value = describeActionError(err)
+  }
 }
 
 async function onToggleSuperuser(member: Member) {
-  const updated = await $fetch<Member>(`/api/users/${member.id}`, {
-    method: 'PATCH',
-    body: { is_superuser: !member.is_superuser },
-  })
-  Object.assign(member, updated)
+  actionError.value = ''
+  try {
+    const updated = await $fetch<Member>(`/api/admin/users/${member.id}/role`, {
+      method: 'PATCH',
+      body: { is_superuser: !member.is_superuser },
+    })
+    Object.assign(member, updated)
+  } catch (err) {
+    actionError.value = describeActionError(err)
+  }
+}
+
+async function onRevokeSessions(member: Member) {
+  actionError.value = ''
+  if (!window.confirm(`Sign ${member.display_name} out of all their devices?`)) return
+  try {
+    await $fetch(`/api/admin/users/${member.id}/revoke-sessions`, { method: 'POST' })
+  } catch (err) {
+    actionError.value = describeActionError(err)
+  }
 }
 </script>
 
 <style scoped>
 .muted {
   color: var(--muted);
+}
+
+.audit-link {
+  font-size: 0.85rem;
+  color: var(--accent);
 }
 
 .member-list {
@@ -316,6 +446,24 @@ input {
 
 .invite-result {
   margin-top: 1rem;
+}
+
+.reset-panel {
+  margin-bottom: 1.5rem;
+}
+
+.reset-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.reset-buttons button:not(.submit-btn) {
+  padding: 0.65rem 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 1rem;
 }
 
 .feed-row {

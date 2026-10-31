@@ -1,10 +1,13 @@
 from app.models.absence import Absence
+from app.models.audit import AuditLog
 from app.models.awards import AwardCategorySuggestion, AwardCategoryVote, AwardCycle, AwardCyclePhase
 from app.models.contests import ContestAwardResult, ContestDuty, ContestLogEntry
 from app.models.dashboard import DashboardConfig
 from app.models.duty import Duty, DutyAssignee, DutyOccurrence, DutyOverride, DutyTeam, DutyTeamMember
 from app.models.event import Event, EventRSVP, EventSeries, EventType, RSVPStatus
 from app.models.notification import Notification, PushSubscription
+from app.models.oauth import OAuthAccount
+from app.models.passkey import Passkey
 from app.models.shopping import ShoppingItem, ShoppingList
 from app.models.task import Task, TaskAssignee
 from app.models.user import AccessToken, DeviceTrust, User
@@ -12,6 +15,7 @@ from app.models.user import AccessToken, DeviceTrust, User
 __all__ = [
     "AccessToken",
     "Absence",
+    "AuditLog",
     "AwardCategorySuggestion",
     "AwardCategoryVote",
     "AwardCycle",
@@ -32,6 +36,8 @@ __all__ = [
     "EventType",
     "RSVPStatus",
     "Notification",
+    "OAuthAccount",
+    "Passkey",
     "PushSubscription",
     "ShoppingItem",
     "ShoppingList",

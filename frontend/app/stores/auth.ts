@@ -4,6 +4,7 @@ export interface AuthUser {
   display_name: string
   is_2fa_enabled: boolean
   is_superuser: boolean
+  password_login_enabled: boolean
   calendar_feed_token: string
   birthday: string | null
   avatar_updated_at: string | null
@@ -51,6 +52,29 @@ export const useAuthStore = defineStore('auth', {
         body: { pin },
       })
       this.user = res.user
+    },
+
+    async setPasswordLogin(enabled: boolean) {
+      this.user = await $fetch<AuthUser>('/api/auth/password-login', {
+        method: 'POST',
+        body: { enabled },
+      })
+    },
+
+    async loginPasskey() {
+      const options = await $fetch<PublicKeyCredentialRequestOptionsJSON>('/api/auth/passkeys/login/options', {
+        method: 'POST',
+      })
+      const credential = (await navigator.credentials.get({
+        publicKey: PublicKeyCredential.parseRequestOptionsFromJSON(options),
+      })) as PublicKeyCredential | null
+      if (!credential) return
+      const res = await $fetch<{ user: AuthUser }>('/api/auth/passkeys/login/verify', {
+        method: 'POST',
+        body: { credential: credential.toJSON() },
+      })
+      this.user = res.user
+      this.initialized = true
     },
 
     async regenerateCalendarFeedToken() {
@@ -105,6 +129,24 @@ export const useAuthStore = defineStore('auth', {
       })
       this.user = res.user
       this.initialized = true
+    },
+
+    async fetchPasswordReset(token: string) {
+      return await $fetch<{ display_name: string; email: string }>(`/api/auth/password-reset/${token}`)
+    },
+
+    // Resolves with requires_2fa when the member still has 2FA on: the server has then set the
+    // pending-2FA cookie, and the caller finishes sign-in with verify2fa().
+    async redeemPasswordReset(token: string, password: string) {
+      const res = await $fetch<LoginResult>(`/api/auth/password-reset/${token}`, {
+        method: 'POST',
+        body: { password },
+      })
+      if (res.user) {
+        this.user = res.user
+        this.initialized = true
+      }
+      return res
     },
 
     async logout() {

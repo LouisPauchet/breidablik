@@ -19,6 +19,24 @@
       </button>
     </form>
 
+    <div v-if="step === 'credentials' && passkeysAvailable" class="card">
+      <button type="button" :disabled="loading" @click="submitPasskey">Sign in with a passkey</button>
+      <p v-if="passkeyError" class="error">{{ passkeyError }}</p>
+    </div>
+
+    <div v-if="step === 'credentials' && (providers.length || oauthNotice)" class="card">
+      <p v-if="oauthNotice" class="error">{{ oauthNotice }}</p>
+      <!-- Plain links, not router links: the server redirects on to the provider. -->
+      <a
+        v-for="name in providers"
+        :key="name"
+        class="provider-btn"
+        :href="`/api/auth/oauth/${name}/login`"
+      >
+        Continue with {{ PROVIDER_LABELS[name] ?? name }}
+      </a>
+    </div>
+
     <form v-if="step === 'credentials' && showPin" class="card" @submit.prevent="submitPin">
       <label>
         PIN
@@ -45,8 +63,58 @@ definePageMeta({ layout: false })
 
 const authStore = useAuthStore()
 const router = useRouter()
+const route = useRoute()
 
-const step = ref<'credentials' | 'twofa'>('credentials')
+const PROVIDER_LABELS: Record<string, string> = { google: 'Google', github: 'GitHub' }
+
+const OAUTH_NOTICES: Record<string, string> = {
+  unlinked: 'That account is not linked to a member here. Sign in another way and link it from your profile.',
+  error: 'Could not sign in with that account — try again.',
+}
+
+// The server redirects back here as /login?oauth=2fa once the provider sign-in succeeded
+// but the member still owes their authenticator code (it has set the pending-2FA cookie).
+const step = ref<'credentials' | 'twofa'>(route.query.oauth === '2fa' ? 'twofa' : 'credentials')
+const providers = ref<string[]>([])
+const oauthNotice = OAUTH_NOTICES[String(route.query.oauth ?? '')] ?? ''
+
+const passkeysAvailable = ref(false)
+const passkeyError = ref('')
+
+onMounted(async () => {
+  try {
+    providers.value = await $fetch<string[]>('/api/auth/oauth/providers')
+  } catch {
+    // Optional feature: password login still works without the buttons.
+  }
+  try {
+    const config = await $fetch<{ enabled: boolean }>('/api/auth/passkeys/config')
+    passkeysAvailable.value =
+      config.enabled && 'PublicKeyCredential' in window && typeof PublicKeyCredential.parseRequestOptionsFromJSON === 'function'
+  } catch {
+    // Same: just no passkey button.
+  }
+})
+
+function isPasswordLoginDisabled(err: unknown) {
+  return (err as { data?: { detail?: string } })?.data?.detail === 'PASSWORD_LOGIN_DISABLED'
+}
+
+async function submitPasskey() {
+  passkeyError.value = ''
+  loading.value = true
+  try {
+    await authStore.loginPasskey()
+    if (authStore.user) await router.push('/')
+  } catch (err) {
+    // Dismissing the browser's passkey prompt is not worth an error message.
+    if ((err as { name?: string })?.name !== 'NotAllowedError') {
+      passkeyError.value = 'Could not sign in with a passkey — try another way.'
+    }
+  } finally {
+    loading.value = false
+  }
+}
 const email = ref('')
 const password = ref('')
 const code = ref('')
@@ -67,8 +135,10 @@ async function submitCredentials() {
       authStore.user = result.user
       await router.push('/')
     }
-  } catch {
-    error.value = 'Incorrect email or password.'
+  } catch (err) {
+    error.value = isPasswordLoginDisabled(err)
+      ? 'Password sign-in is turned off for this account — use your passkey.'
+      : 'Incorrect email or password.'
   } finally {
     loading.value = false
   }
@@ -93,8 +163,10 @@ async function submitPin() {
   try {
     await authStore.loginPin(pin.value)
     await router.push('/')
-  } catch {
-    pinError.value = 'This device is not trusted yet, or the PIN is wrong — log in with your password.'
+  } catch (err) {
+    pinError.value = isPasswordLoginDisabled(err)
+      ? 'PIN sign-in is turned off for this account — use your passkey.'
+      : 'This device is not trusted yet, or the PIN is wrong — log in with your password.'
   } finally {
     loading.value = false
   }
@@ -141,6 +213,18 @@ button {
   background: var(--accent);
   color: white;
   font-size: 1rem;
+}
+
+.provider-btn {
+  display: block;
+  text-align: center;
+  padding: 0.65rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 1rem;
+  text-decoration: none;
 }
 
 button.link {
