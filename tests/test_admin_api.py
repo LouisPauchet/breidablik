@@ -1,4 +1,7 @@
+import uuid
+
 from fastapi_users.db import SQLAlchemyUserDatabase
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.auth.users import UserManager
@@ -85,7 +88,7 @@ async def test_invited_member_cannot_log_in_before_accepting(client, alice):
     assert login_resp.status_code == 200
 
 
-async def test_regenerate_invite_requires_pending_member(client, alice):
+async def test_regenerate_invite_requires_pending_member(client, alice, test_engine):
     await _login(client, "alice@example.com")
     create_resp = await client.post(
         "/api/admin/users", json={"email": "carol@example.com", "display_name": "Carol"}
@@ -97,7 +100,11 @@ async def test_regenerate_invite_requires_pending_member(client, alice):
     assert regen.status_code == 200
     assert regen.json()["invite_token"] != old_token
 
-    # Activate her, then regenerating should be rejected.
-    await client.patch(f"/api/users/{carol_id}", json={"is_active": True})
+    # Activate her (as accepting the invite would), then regenerating should be rejected.
+    maker = async_sessionmaker(test_engine, expire_on_commit=False)
+    async with maker() as session:
+        carol = (await session.execute(select(User).where(User.id == uuid.UUID(carol_id)))).scalar_one()
+        carol.is_active = True
+        await session.commit()
     regen_after_active = await client.post(f"/api/admin/users/{carol_id}/invite/regenerate")
     assert regen_after_active.status_code == 400

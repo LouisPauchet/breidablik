@@ -117,6 +117,24 @@ async def notify_account_reactivated(session: AsyncSession, user: User) -> None:
     await send_push_to_user(session, user.id, {"title": title, "body": body, "url": "/"})
 
 
+async def notify_sessions_revoked(session: AsyncSession, user: User) -> None:
+    title = "You were signed out"
+    body = "An admin signed you out of all your devices. Sign in again to continue."
+    session.add(Notification(user_id=user.id, kind="sessions_revoked", title=title, body=body, url="/"))
+    await session.commit()
+
+    await send_push_to_user(session, user.id, {"title": title, "body": body, "url": "/"})
+
+
+async def notify_role_changed(session: AsyncSession, user: User) -> None:
+    title = "Your role changed"
+    body = "An admin made you an admin." if user.is_superuser else "An admin removed your admin role."
+    session.add(Notification(user_id=user.id, kind="role_changed", title=title, body=body, url="/profile"))
+    await session.commit()
+
+    await send_push_to_user(session, user.id, {"title": title, "body": body, "url": "/profile"})
+
+
 async def notify_admins_of_update(session: AsyncSession, version: str) -> None:
     """Called by the Passenger update script (scripts/passenger_update.py) after it swaps in
     a new release and runs migrations — lets admins know the deploy actually landed, since

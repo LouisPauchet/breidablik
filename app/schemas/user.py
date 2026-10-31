@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime
 
 from fastapi_users import schemas
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, model_validator
 
 
 class UserRead(schemas.BaseUser[uuid.UUID]):
@@ -30,6 +30,15 @@ class UserUpdate(schemas.BaseUserUpdate):
     # endpoint required (see BaseUserUpdate.create_update_dict for why).
     birthday: date | None = None
 
+    @model_validator(mode="after")
+    def _no_privileged_flags(self):
+        # fastapi-users' stock PATCH /api/users/{id} lets any admin flip these on anyone,
+        # including themselves, which would skip the guards and audit trail of the admin
+        # endpoints (deactivate/reactivate/role in app/routers/admin.py) — use those instead.
+        if self.is_active is not None or self.is_superuser is not None:
+            raise ValueError("is_active and is_superuser are changed through /api/admin/users/{id}/...")
+        return self
+
 
 class AdminUserInvite(BaseModel):
     """No password field — an admin invites a member by name/email only; the member sets
@@ -38,6 +47,10 @@ class AdminUserInvite(BaseModel):
     display_name: str = Field(min_length=1, max_length=100)
     email: EmailStr
     is_superuser: bool = False
+
+
+class AdminRoleChange(BaseModel):
+    is_superuser: bool
 
 
 class AdminPasswordResetRequest(BaseModel):

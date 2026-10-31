@@ -41,8 +41,19 @@
           <button v-if="member.is_active" type="button" @click="onStartReset(member)">
             Reset password link
           </button>
-          <button type="button" @click="onToggleSuperuser(member)">
+          <button
+            v-if="member.id !== authStore.user?.id"
+            type="button"
+            @click="onToggleSuperuser(member)"
+          >
             {{ member.is_superuser ? 'Remove admin' : 'Make admin' }}
+          </button>
+          <button
+            v-if="member.is_active && member.id !== authStore.user?.id"
+            type="button"
+            @click="onRevokeSessions(member)"
+          >
+            Sign out everywhere
           </button>
         </div>
       </li>
@@ -281,11 +292,26 @@ async function onToggleActive(member: Member) {
 }
 
 async function onToggleSuperuser(member: Member) {
-  const updated = await $fetch<Member>(`/api/users/${member.id}`, {
-    method: 'PATCH',
-    body: { is_superuser: !member.is_superuser },
-  })
-  Object.assign(member, updated)
+  actionError.value = ''
+  try {
+    const updated = await $fetch<Member>(`/api/admin/users/${member.id}/role`, {
+      method: 'PATCH',
+      body: { is_superuser: !member.is_superuser },
+    })
+    Object.assign(member, updated)
+  } catch (err) {
+    actionError.value = describeActionError(err)
+  }
+}
+
+async function onRevokeSessions(member: Member) {
+  actionError.value = ''
+  if (!window.confirm(`Sign ${member.display_name} out of all their devices?`)) return
+  try {
+    await $fetch(`/api/admin/users/${member.id}/revoke-sessions`, { method: 'POST' })
+  } catch (err) {
+    actionError.value = describeActionError(err)
+  }
 }
 </script>
 

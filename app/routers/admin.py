@@ -21,6 +21,7 @@ from app.models.user import User
 from app.schemas.user import (
     AdminPasswordResetRequest,
     AdminPasswordResetResponse,
+    AdminRoleChange,
     AdminUserInvite,
     UserCreate,
     UserRead,
@@ -29,7 +30,12 @@ from app.auth.device_trust import revoke_all_device_trusts
 from app.auth.sessions import revoke_all_access_tokens
 from app.services.admin_guards import assert_not_last_admin, assert_not_self
 from app.services.audit import log_audit
-from app.services.notifications import notify_account_reactivated, notify_password_reset_issued
+from app.services.notifications import (
+    notify_account_reactivated,
+    notify_password_reset_issued,
+    notify_role_changed,
+    notify_sessions_revoked,
+)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(current_superuser)])
 
@@ -182,6 +188,54 @@ async def reactivate_member(
     await log_audit(session, admin, "user.reactivated", user)
     await session.commit()
     await notify_account_reactivated(session, user)
+
+    await session.refresh(user)
+    return user
+
+
+@router.post("/users/{user_id}/revoke-sessions", response_model=UserRead)
+async def revoke_member_sessions(
+    user_id: uuid.UUID,
+    admin: User = Depends(current_superuser),
+    session: AsyncSession = Depends(get_session),
+):
+    """Force logout: every login session and PIN shortcut goes, but the account stays usable —
+    the member just signs in again (use deactivate to actually lock them out).
+    """
+    user = await _load_member(session, user_id)
+    assert_not_self(admin, user)
+    if not user.is_active:
+        raise HTTPException(status_code=400, detail="USER_NOT_ACTIVE")
+
+    await log_audit(session, admin, "user.sessions_revoked", user)
+    await session.commit()
+    await revoke_all_device_trusts(session, user.id)
+    await revoke_all_access_tokens(session, user.id)
+    await notify_sessions_revoked(session, user)
+
+    await session.refresh(user)
+    return user
+
+
+@router.patch("/users/{user_id}/role", response_model=UserRead)
+async def change_member_role(
+    user_id: uuid.UUID,
+    data: AdminRoleChange,
+    admin: User = Depends(current_superuser),
+    session: AsyncSession = Depends(get_session),
+):
+    user = await _load_member(session, user_id)
+    assert_not_self(admin, user)
+    if user.is_superuser == data.is_superuser:
+        return user
+    if not data.is_superuser:
+        await assert_not_last_admin(session, user)
+
+    user.is_superuser = data.is_superuser
+    await log_audit(session, admin, "user.role_changed", user, is_superuser=data.is_superuser)
+    await session.commit()
+    if user.is_active:
+        await notify_role_changed(session, user)
 
     await session.refresh(user)
     return user
