@@ -124,3 +124,16 @@ def test_downgrade_removes_the_new_columns(migration_db):
     columns = user_columns()
     assert "password_login_enabled" not in columns
     assert "deactivated_at" not in columns
+
+
+@requires_postgres
+def test_audit_log_table_is_created_and_dropped(migration_db):
+    def has_audit_log() -> bool:
+        rows = _run_sql([("SELECT to_regclass('public.audit_log')", {})])
+        return rows[0][0] is not None
+
+    command.upgrade(migration_db, "head")
+    assert has_audit_log()
+
+    command.downgrade(migration_db, "a2c6e8f1b3d5")
+    assert not has_audit_log()

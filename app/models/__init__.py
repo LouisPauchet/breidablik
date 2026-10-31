@@ -1,4 +1,5 @@
 from app.models.absence import Absence
+from app.models.audit import AuditLog
 from app.models.awards import AwardCategorySuggestion, AwardCategoryVote, AwardCycle, AwardCyclePhase
 from app.models.contests import ContestAwardResult, ContestDuty, ContestLogEntry
 from app.models.dashboard import DashboardConfig
@@ -12,6 +13,7 @@ from app.models.user import AccessToken, DeviceTrust, User
 __all__ = [
     "AccessToken",
     "Absence",
+    "AuditLog",
     "AwardCategorySuggestion",
     "AwardCategoryVote",
     "AwardCycle",
