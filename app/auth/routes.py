@@ -82,7 +82,7 @@ def _serialize_user(user: User) -> dict:
     }
 
 
-def _cookie_kwargs(max_age: int) -> dict:
+def cookie_kwargs(max_age: int) -> dict:
     settings = get_settings()
     return {
         "max_age": max_age,
@@ -101,10 +101,14 @@ async def _finish_login(strategy: DatabaseStrategy, user: User) -> JSONResponse:
     return json_response
 
 
-def _pending_2fa_response(user: User) -> JSONResponse:
+def set_pending_2fa_cookie(response, user: User) -> None:
     token = make_token(PENDING_2FA_AUD, PENDING_LIFETIME_SECONDS, user_id=str(user.id))
+    response.set_cookie(PENDING_2FA_COOKIE, token, **cookie_kwargs(PENDING_LIFETIME_SECONDS))
+
+
+def _pending_2fa_response(user: User) -> JSONResponse:
     response = JSONResponse({"requires_2fa": True})
-    response.set_cookie(PENDING_2FA_COOKIE, token, **_cookie_kwargs(PENDING_LIFETIME_SECONDS))
+    set_pending_2fa_cookie(response, user)
     return response
 
 
@@ -263,7 +267,7 @@ async def enroll_device_trust(
     await session.commit()
 
     response = JSONResponse({"ok": True})
-    response.set_cookie(DEVICE_ID_COOKIE, device_id, **_cookie_kwargs(DEVICE_COOKIE_MAX_AGE))
+    response.set_cookie(DEVICE_ID_COOKIE, device_id, **cookie_kwargs(DEVICE_COOKIE_MAX_AGE))
     return response
 
 
@@ -294,7 +298,7 @@ async def start_totp_enrollment(user: User = Depends(current_active_user)):
     qr_data_uri = build_qr_data_uri(secret, user.email)
 
     response = JSONResponse({"secret": secret, "qr_data_uri": qr_data_uri})
-    response.set_cookie(PENDING_TOTP_COOKIE, token, **_cookie_kwargs(PENDING_LIFETIME_SECONDS))
+    response.set_cookie(PENDING_TOTP_COOKIE, token, **cookie_kwargs(PENDING_LIFETIME_SECONDS))
     return response
 
 

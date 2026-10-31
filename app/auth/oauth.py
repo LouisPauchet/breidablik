@@ -3,15 +3,19 @@ OAuth router: that one can create accounts and match by email, and here a provid
 may only ever be *linked* to a member who already exists, by that member, while signed in.
 """
 
+import secrets
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
+from fastapi_users.authentication.strategy.db import DatabaseStrategy
 from httpx_oauth.clients.github import GitHubOAuth2
 from httpx_oauth.clients.google import GoogleOAuth2
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.backend import current_active_user, fastapi_users
+from app.auth.backend import auth_backend, current_active_user, fastapi_users
+from app.auth.routes import cookie_kwargs, set_pending_2fa_cookie
 from app.auth.tokens import make_token, read_token
 from app.config import get_settings
 from app.db import get_session
@@ -22,7 +26,9 @@ router = APIRouter(prefix="/api/auth/oauth", tags=["oauth"])
 
 OAUTH_STATE_AUD = "breidablik:oauth-state"
 OAUTH_STATE_LIFETIME_SECONDS = 600
+OAUTH_NONCE_COOKIE = "oauth_nonce"
 PROFILE_URL = "/profile"
+LOGIN_URL = "/login"
 
 optional_active_user = fastapi_users.current_user(active=True, optional=True)
 
@@ -105,6 +111,43 @@ def _profile_redirect(outcome: str) -> RedirectResponse:
     return RedirectResponse(f"{PROFILE_URL}?oauth={outcome}", status_code=302)
 
 
+def _login_redirect(outcome: str) -> RedirectResponse:
+    response = RedirectResponse(f"{LOGIN_URL}?oauth={outcome}", status_code=302)
+    response.delete_cookie(OAUTH_NONCE_COOKIE)
+    return response
+
+
+@router.get("/{provider}/login")
+async def start_login(
+    provider: str, request: Request, clients: dict = Depends(get_oauth_clients)
+) -> RedirectResponse:
+    """A plain browser navigation (not an XHR), so the page can just link here."""
+    client = _get_client(clients, provider)
+
+    # Ties the flow to the browser that started it: the same nonce rides in the signed state
+    # and in a cookie, and the callback needs both to agree. Without it an attacker could
+    # begin a login as themselves and trick a victim's browser into finishing it.
+    nonce = secrets.token_urlsafe(16)
+    state = make_token(
+        OAUTH_STATE_AUD, OAUTH_STATE_LIFETIME_SECONDS, purpose="login", provider=provider, nonce=nonce
+    )
+    url = await client.get_authorization_url(_redirect_uri(request, provider), state=state)
+
+    response = RedirectResponse(url, status_code=302)
+    response.set_cookie(OAUTH_NONCE_COOKIE, nonce, **cookie_kwargs(OAUTH_STATE_LIFETIME_SECONDS))
+    return response
+
+
+async def _finish_oauth_login(strategy: DatabaseStrategy, user: User) -> RedirectResponse:
+    login_response = await auth_backend.login(strategy, user)
+    response = RedirectResponse("/", status_code=302)
+    for header, value in login_response.headers.raw:
+        if header == b"set-cookie":
+            response.raw_headers.append((header, value))
+    response.delete_cookie(OAUTH_NONCE_COOKIE)
+    return response
+
+
 @router.get("/{provider}/callback")
 async def oauth_callback(
     provider: str,
@@ -114,16 +157,49 @@ async def oauth_callback(
     user: User | None = Depends(optional_active_user),
     session: AsyncSession = Depends(get_session),
     clients: dict = Depends(get_oauth_clients),
+    strategy: DatabaseStrategy = Depends(auth_backend.get_strategy),
 ):
     client = _get_client(clients, provider)
+    # Until the state is verified we don't know which flow this is; a signed-in member is
+    # most likely linking, anyone else is signing in.
+    fail = (lambda: _profile_redirect("error")) if user else (lambda: _login_redirect("error"))
     if not code or not state:
-        return _profile_redirect("error")
+        return fail()
     try:
         claims = read_token(state, OAUTH_STATE_AUD)
     except Exception:
-        return _profile_redirect("error")
+        return fail()
     if claims.get("provider") != provider:
-        return _profile_redirect("error")
+        return fail()
+
+    if claims.get("purpose") == "login":
+        nonce = request.cookies.get(OAUTH_NONCE_COOKIE)
+        if not nonce or not secrets.compare_digest(nonce, str(claims.get("nonce", ""))):
+            return _login_redirect("error")
+        try:
+            token = await client.get_access_token(code, _redirect_uri(request, provider))
+            account_id, _email = await client.get_id_email(token["access_token"])
+        except Exception:
+            return _login_redirect("error")
+
+        # Matched on the provider's stable account id only — never on email, which would let
+        # anyone who controls a matching address at some provider walk into the account.
+        result = await session.execute(
+            select(User)
+            .join(OAuthAccount, OAuthAccount.user_id == User.id)
+            .where(OAuthAccount.provider == provider, OAuthAccount.account_id == str(account_id))
+        )
+        member = result.scalar_one_or_none()
+        if member is None:
+            return _login_redirect("unlinked")
+        if not member.is_active:
+            return _login_redirect("error")
+
+        if member.is_2fa_enabled:
+            response = _login_redirect("2fa")
+            set_pending_2fa_cookie(response, member)
+            return response
+        return await _finish_oauth_login(strategy, member)
 
     if claims.get("purpose") == "link":
         # The state alone isn't enough: whoever completes the callback must be the very
