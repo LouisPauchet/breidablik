@@ -4,6 +4,7 @@ may only ever be *linked* to a member who already exists, by that member, while 
 """
 
 import secrets
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
@@ -20,6 +21,7 @@ from app.auth.tokens import make_token, read_token
 from app.config import get_settings
 from app.db import get_session
 from app.models.oauth import OAuthAccount
+from app.models.passkey import Passkey
 from app.models.user import User
 
 router = APIRouter(prefix="/api/auth/oauth", tags=["oauth"])
@@ -59,14 +61,20 @@ def _get_client(clients: dict, provider: str):
 
 
 async def count_signin_methods(
-    session: AsyncSession, user: User, *, excluding_provider: str | None = None
+    session: AsyncSession,
+    user: User,
+    *,
+    excluding_provider: str | None = None,
+    excluding_passkey_id: uuid.UUID | None = None,
 ) -> int:
-    """How many independent ways the member has to get back in. Used so unlinking (or, later,
-    removing a passkey) can't leave an account with none.
+    """How many independent ways the member has to get back in (password, each linked
+    provider, each passkey). Used so removing one can't leave an account with none.
     """
     methods = 1 if user.password_login_enabled else 0
-    result = await session.execute(select(OAuthAccount.provider).where(OAuthAccount.user_id == user.id))
-    methods += sum(1 for provider in result.scalars() if provider != excluding_provider)
+    providers = await session.execute(select(OAuthAccount.provider).where(OAuthAccount.user_id == user.id))
+    methods += sum(1 for provider in providers.scalars() if provider != excluding_provider)
+    passkeys = await session.execute(select(Passkey.id).where(Passkey.user_id == user.id))
+    methods += sum(1 for passkey_id in passkeys.scalars() if passkey_id != excluding_passkey_id)
     return methods
 
 

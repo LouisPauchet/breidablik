@@ -1,4 +1,5 @@
 from functools import lru_cache
+from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -39,6 +40,21 @@ class Settings(BaseSettings):
     # Public origin used to build the provider callback URL (e.g. https://home.example.org).
     # Empty means "whatever origin the request came in on", which is wrong behind some proxies.
     oauth_redirect_base: str = ""
+
+    # Passkeys (WebAuthn) are opt-in: they need the exact origin the app is served from (a
+    # secure origin, or http://localhost). The relying-party id defaults to that origin's
+    # hostname; set it explicitly only to share passkeys across subdomains.
+    webauthn_origin: str = ""
+    webauthn_rp_id: str = ""
+    webauthn_rp_name: str = "Breidablik"
+
+    @property
+    def webauthn_effective_rp_id(self) -> str:
+        return self.webauthn_rp_id or (urlparse(self.webauthn_origin).hostname or "")
+
+    @property
+    def webauthn_enabled(self) -> bool:
+        return bool(self.webauthn_origin and self.webauthn_effective_rp_id)
 
     @property
     def zone_info(self) -> ZoneInfo:

@@ -150,3 +150,16 @@ def test_oauth_account_table_is_created_and_dropped(migration_db):
 
     command.downgrade(migration_db, "b3d7f9a2c4e6")
     assert not has_oauth_account()
+
+
+@requires_postgres
+def test_passkey_table_is_created_and_dropped(migration_db):
+    def has_passkey() -> bool:
+        rows = _run_sql([("SELECT to_regclass('public.passkey')", {})])
+        return rows[0][0] is not None
+
+    command.upgrade(migration_db, "head")
+    assert has_passkey()
+
+    command.downgrade(migration_db, "c4e8a1b5d7f9")
+    assert not has_passkey()

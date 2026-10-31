@@ -150,6 +150,8 @@
       </template>
     </div>
 
+    <PasskeyManager />
+
     <LinkedAccounts />
 
     <h2>Notifications</h2>
