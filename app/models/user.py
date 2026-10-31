@@ -5,6 +5,7 @@ from datetime import date, datetime
 from fastapi_users.db import SQLAlchemyBaseUserTableUUID
 from fastapi_users_db_sqlalchemy.access_token import SQLAlchemyBaseAccessTokenTableUUID
 from sqlalchemy import Date, ForeignKey, Integer, String, Text, Uuid, func
+from sqlalchemy import true as sa_true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -52,6 +53,16 @@ class User(SQLAlchemyBaseUserTableUUID, Base):
     # once accepted (or if the account was never invite-created at all).
     invite_token: Mapped[str | None] = mapped_column(String(64), unique=True, index=True, default=None)
     invite_token_expires_at: Mapped[datetime | None] = mapped_column(default=None)
+
+    # Set when an admin deactivates a member (is_active goes False with it). This is what tells
+    # a deactivated account apart from a pending invite, which is also is_active=False but has
+    # an invite_token — see app/routers/admin.py. Data is kept; only login is blocked.
+    deactivated_at: Mapped[datetime | None] = mapped_column(default=None)
+
+    # False once a member opts into passkey-only sign-in (see app/auth/passkeys.py): password
+    # and PIN login are then refused for them. An admin password-reset link turns it back on,
+    # which is the recovery path if every passkey is lost.
+    password_login_enabled: Mapped[bool] = mapped_column(default=True, server_default=sa_true())
 
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
