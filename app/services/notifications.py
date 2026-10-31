@@ -108,6 +108,15 @@ async def notify_password_reset_issued(session: AsyncSession, user: User) -> Non
     await send_push_to_user(session, user.id, {"title": title, "body": body, "url": "/profile"})
 
 
+async def notify_account_reactivated(session: AsyncSession, user: User) -> None:
+    title = "Your account was reactivated"
+    body = "An admin reactivated your account. You can sign in again."
+    session.add(Notification(user_id=user.id, kind="account_reactivated", title=title, body=body, url="/"))
+    await session.commit()
+
+    await send_push_to_user(session, user.id, {"title": title, "body": body, "url": "/"})
+
+
 async def notify_admins_of_update(session: AsyncSession, version: str) -> None:
     """Called by the Passenger update script (scripts/passenger_update.py) after it swaps in
     a new release and runs migrations — lets admins know the deploy actually landed, since

@@ -10,6 +10,8 @@ class UserRead(schemas.BaseUser[uuid.UUID]):
     is_2fa_enabled: bool
     birthday: date | None
     avatar_updated_at: datetime | None
+    # Set while an admin has the account deactivated (see app/routers/admin.py).
+    deactivated_at: datetime | None = None
     # Only ever meaningful for an admin looking at a not-yet-accepted invite (see
     # app/routers/admin.py) — None once accepted, or if the account wasn't invite-created.
     invite_token: str | None = None

@@ -25,8 +25,11 @@ from app.schemas.user import (
     UserCreate,
     UserRead,
 )
+from app.auth.device_trust import revoke_all_device_trusts
+from app.auth.sessions import revoke_all_access_tokens
+from app.services.admin_guards import assert_not_last_admin, assert_not_self
 from app.services.audit import log_audit
-from app.services.notifications import notify_password_reset_issued
+from app.services.notifications import notify_account_reactivated, notify_password_reset_issued
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(current_superuser)])
 
@@ -84,6 +87,9 @@ async def regenerate_invite(user_id: uuid.UUID, session: AsyncSession = Depends(
         raise HTTPException(status_code=404, detail="USER_NOT_FOUND")
     if user.is_active:
         raise HTTPException(status_code=400, detail="USER_ALREADY_ACTIVE")
+    if user.deactivated_at is not None:
+        # Deactivated members come back via reactivate, not by redeeming a fresh invite.
+        raise HTTPException(status_code=400, detail="USER_DEACTIVATED")
 
     _issue_invite(user)
     await session.commit()
@@ -118,3 +124,64 @@ async def issue_password_reset(
     await notify_password_reset_issued(session, user)
 
     return AdminPasswordResetResponse(token=token, expires_in=RESET_PASSWORD_TOKEN_LIFETIME_SECONDS)
+
+
+async def _load_member(session: AsyncSession, user_id: uuid.UUID) -> User:
+    result = await session.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="USER_NOT_FOUND")
+    return user
+
+
+@router.post("/users/{user_id}/deactivate", response_model=UserRead)
+async def deactivate_member(
+    user_id: uuid.UUID,
+    admin: User = Depends(current_superuser),
+    session: AsyncSession = Depends(get_session),
+):
+    """Blocks login but keeps every row the member owns (tasks, duties, contest history…).
+    Not offered for pending invites — those have nothing to deactivate yet.
+    """
+    user = await _load_member(session, user_id)
+    assert_not_self(admin, user)
+    if not user.is_active:
+        raise HTTPException(status_code=400, detail="USER_NOT_ACTIVE")
+    await assert_not_last_admin(session, user)
+
+    user.is_active = False
+    user.deactivated_at = datetime.now(timezone.utc)
+    await log_audit(session, admin, "user.deactivated", user)
+    await session.commit()
+
+    # Sessions would already 401 on is_active, but clear them (and PIN shortcuts) so nothing
+    # lingers if the member is later reactivated.
+    await revoke_all_device_trusts(session, user.id)
+    await revoke_all_access_tokens(session, user.id)
+
+    await session.refresh(user)
+    return user
+
+
+@router.post("/users/{user_id}/reactivate", response_model=UserRead)
+async def reactivate_member(
+    user_id: uuid.UUID,
+    admin: User = Depends(current_superuser),
+    session: AsyncSession = Depends(get_session),
+):
+    user = await _load_member(session, user_id)
+    if user.is_active:
+        raise HTTPException(status_code=400, detail="USER_ALREADY_ACTIVE")
+    if user.deactivated_at is None:
+        # Never-accepted invite: activating it would hand out an account nobody has set a
+        # password for. The invite has to be accepted instead.
+        raise HTTPException(status_code=400, detail="USER_PENDING_INVITE")
+
+    user.is_active = True
+    user.deactivated_at = None
+    await log_audit(session, admin, "user.reactivated", user)
+    await session.commit()
+    await notify_account_reactivated(session, user)
+
+    await session.refresh(user)
+    return user

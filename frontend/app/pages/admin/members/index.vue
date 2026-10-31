@@ -2,6 +2,8 @@
   <div v-if="authStore.user?.is_superuser">
     <PageHeader title="Members" back="/profile" />
 
+    <p v-if="actionError" class="error">{{ actionError }}</p>
+
     <ul class="member-list">
       <li v-for="member in members" :key="member.id" class="member-row">
         <NuxtLink :to="`/members/${member.id}`" class="avatar-link">
@@ -17,7 +19,7 @@
             {{ member.display_name }}
             <span v-if="member.is_superuser" class="badge">admin</span>
             <span v-if="isPending(member)" class="badge pending">pending invite</span>
-            <span v-else-if="!member.is_active" class="badge inactive">inactive</span>
+            <span v-else-if="!member.is_active" class="badge inactive">deactivated</span>
           </div>
           <div class="muted">{{ member.email }}</div>
           <div v-if="member.birthday" class="muted">🎂 {{ formatBirthday(member.birthday) }}</div>
@@ -29,8 +31,12 @@
             </button>
             <button type="button" @click="onResendInvite(member)">Resend invite</button>
           </template>
-          <button v-else type="button" @click="onToggleActive(member)">
-            {{ member.is_active ? 'Deactivate' : 'Activate' }}
+          <button
+            v-else-if="!member.is_active || member.id !== authStore.user?.id"
+            type="button"
+            @click="onToggleActive(member)"
+          >
+            {{ member.is_active ? 'Deactivate' : 'Reactivate' }}
           </button>
           <button v-if="member.is_active" type="button" @click="onStartReset(member)">
             Reset password link
@@ -110,6 +116,7 @@ interface Member {
   birthday: string | null
   avatar_updated_at: string | null
   invite_token: string | null
+  deactivated_at: string | null
 }
 
 const authStore = useAuthStore()
@@ -247,12 +254,30 @@ async function submit() {
   }
 }
 
+const actionError = ref('')
+
+const ACTION_ERRORS: Record<string, string> = {
+  CANNOT_ACT_ON_SELF: "You can't do that to your own account.",
+  LAST_ADMIN: 'There must always be at least one active admin.',
+  USER_PENDING_INVITE: 'That member has not accepted their invite yet.',
+}
+
+function describeActionError(err: unknown) {
+  const detail = (err as { data?: { detail?: string } })?.data?.detail ?? ''
+  return ACTION_ERRORS[detail] ?? 'That did not work — try again.'
+}
+
 async function onToggleActive(member: Member) {
-  const updated = await $fetch<Member>(`/api/users/${member.id}`, {
-    method: 'PATCH',
-    body: { is_active: !member.is_active },
-  })
-  Object.assign(member, updated)
+  actionError.value = ''
+  try {
+    const updated = await $fetch<Member>(
+      `/api/admin/users/${member.id}/${member.is_active ? 'deactivate' : 'reactivate'}`,
+      { method: 'POST' },
+    )
+    Object.assign(member, updated)
+  } catch (err) {
+    actionError.value = describeActionError(err)
+  }
 }
 
 async function onToggleSuperuser(member: Member) {
