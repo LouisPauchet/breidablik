@@ -137,3 +137,16 @@ def test_audit_log_table_is_created_and_dropped(migration_db):
 
     command.downgrade(migration_db, "a2c6e8f1b3d5")
     assert not has_audit_log()
+
+
+@requires_postgres
+def test_oauth_account_table_is_created_and_dropped(migration_db):
+    def has_oauth_account() -> bool:
+        rows = _run_sql([("SELECT to_regclass('public.oauth_account')", {})])
+        return rows[0][0] is not None
+
+    command.upgrade(migration_db, "head")
+    assert has_oauth_account()
+
+    command.downgrade(migration_db, "b3d7f9a2c4e6")
+    assert not has_oauth_account()

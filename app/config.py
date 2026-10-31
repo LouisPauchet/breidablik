@@ -30,6 +30,16 @@ class Settings(BaseSettings):
     avatar_storage_dir: str = "var/avatars"
     avatar_max_upload_bytes: int = 5 * 1024 * 1024
 
+    # Social sign-in is opt-in: a provider is only offered once both its id and secret are set.
+    # It only ever links to an existing member (see app/auth/oauth.py) — never creates one.
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    github_client_id: str = ""
+    github_client_secret: str = ""
+    # Public origin used to build the provider callback URL (e.g. https://home.example.org).
+    # Empty means "whatever origin the request came in on", which is wrong behind some proxies.
+    oauth_redirect_base: str = ""
+
     @property
     def zone_info(self) -> ZoneInfo:
         return ZoneInfo(self.timezone)

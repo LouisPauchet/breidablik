@@ -19,6 +19,7 @@ dependencies = [
     "a2wsgi>=1.10",
     "pillow>=11.0",
     "python-multipart>=0.0.12",
+    "httpx-oauth>=0.17.0",
 ]
 
 [project.optional-dependencies]

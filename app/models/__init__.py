@@ -6,6 +6,7 @@ from app.models.dashboard import DashboardConfig
 from app.models.duty import Duty, DutyAssignee, DutyOccurrence, DutyOverride, DutyTeam, DutyTeamMember
 from app.models.event import Event, EventRSVP, EventSeries, EventType, RSVPStatus
 from app.models.notification import Notification, PushSubscription
+from app.models.oauth import OAuthAccount
 from app.models.shopping import ShoppingItem, ShoppingList
 from app.models.task import Task, TaskAssignee
 from app.models.user import AccessToken, DeviceTrust, User
@@ -34,6 +35,7 @@ __all__ = [
     "EventType",
     "RSVPStatus",
     "Notification",
+    "OAuthAccount",
     "PushSubscription",
     "ShoppingItem",
     "ShoppingList",

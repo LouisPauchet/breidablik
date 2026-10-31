@@ -150,6 +150,8 @@
       </template>
     </div>
 
+    <LinkedAccounts />
+
     <h2>Notifications</h2>
     <div class="card">
       <p v-if="!pushSupported" class="muted">Push notifications aren't supported on this browser.</p>

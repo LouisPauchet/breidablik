@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.auth.backend import fastapi_users
+from app.auth.oauth import router as oauth_router
 from app.auth.routes import router as auth_router
 from app.config import get_settings
 from app.db import session_scope
@@ -69,6 +70,7 @@ app = FastAPI(title="Breidablik", lifespan=lifespan)
 # especially the calendar feed, whose GET /calendar/{token}.ics would otherwise be caught by
 # the SPA fallback's own GET {full_path:path} pattern.
 app.include_router(auth_router)
+app.include_router(oauth_router)
 app.include_router(admin_router)
 app.include_router(avatars_router)
 app.include_router(awards_router)
