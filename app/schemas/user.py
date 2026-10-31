@@ -63,3 +63,14 @@ class AdminPasswordResetRequest(BaseModel):
 class AdminPasswordResetResponse(BaseModel):
     token: str
     expires_in: int
+
+
+class AuditLogEntry(BaseModel):
+    id: uuid.UUID
+    actor_id: uuid.UUID | None
+    actor_name: str | None
+    target_user_id: uuid.UUID | None
+    target_name: str | None
+    action: str
+    detail: dict | None
+    created_at: datetime

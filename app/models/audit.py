@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import ForeignKey, String, Text, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column
@@ -24,4 +24,9 @@ class AuditLog(Base):
     action: Mapped[str] = mapped_column(String(50))
     # JSON-encoded dict of extra context; None when there is none.
     detail: Mapped[str | None] = mapped_column(Text, default=None)
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now(), index=True)
+    # Set in Python as well as by the server default: now() is fixed for a whole Postgres
+    # transaction (and whole-second on SQLite), which would tie entries and make "newest
+    # first" ambiguous.
+    created_at: Mapped[datetime] = mapped_column(
+        default=lambda: datetime.now(timezone.utc), server_default=func.now(), index=True
+    )

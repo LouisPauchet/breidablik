@@ -5,24 +5,28 @@ and sends however they like (text, email, in person); the member sets their own 
 by following it (see /api/auth/invite/{token} in app/auth/routes.py).
 """
 
+import json
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi_users.exceptions import UserAlreadyExists
 from sqlalchemy import select
+from sqlalchemy.orm import aliased
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.backend import current_superuser
 from app.auth.users import RESET_PASSWORD_TOKEN_LIFETIME_SECONDS, UserManager, get_user_manager
 from app.db import get_session
+from app.models.audit import AuditLog
 from app.models.user import User
 from app.schemas.user import (
     AdminPasswordResetRequest,
     AdminPasswordResetResponse,
     AdminRoleChange,
     AdminUserInvite,
+    AuditLogEntry,
     UserCreate,
     UserRead,
 )
@@ -239,3 +243,39 @@ async def change_member_role(
 
     await session.refresh(user)
     return user
+
+
+@router.get("/audit-log", response_model=list[AuditLogEntry])
+async def list_audit_log(
+    target: uuid.UUID | None = None,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    session: AsyncSession = Depends(get_session),
+):
+    actor = aliased(User)
+    target_user = aliased(User)
+    query = (
+        select(AuditLog, actor.display_name, target_user.display_name)
+        .outerjoin(actor, AuditLog.actor_id == actor.id)
+        .outerjoin(target_user, AuditLog.target_user_id == target_user.id)
+        .order_by(AuditLog.created_at.desc(), AuditLog.id)
+        .limit(limit)
+        .offset(offset)
+    )
+    if target is not None:
+        query = query.where(AuditLog.target_user_id == target)
+
+    rows = (await session.execute(query)).all()
+    return [
+        AuditLogEntry(
+            id=entry.id,
+            actor_id=entry.actor_id,
+            actor_name=actor_name,
+            target_user_id=entry.target_user_id,
+            target_name=target_name,
+            action=entry.action,
+            detail=json.loads(entry.detail) if entry.detail else None,
+            created_at=entry.created_at,
+        )
+        for entry, actor_name, target_name in rows
+    ]

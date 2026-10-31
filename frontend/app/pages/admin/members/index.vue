@@ -1,6 +1,8 @@
 <template>
   <div v-if="authStore.user?.is_superuser">
-    <PageHeader title="Members" back="/profile" />
+    <PageHeader title="Members" back="/profile">
+      <NuxtLink to="/admin/audit" class="audit-link">Audit log</NuxtLink>
+    </PageHeader>
 
     <p v-if="actionError" class="error">{{ actionError }}</p>
 
@@ -318,6 +320,11 @@ async function onRevokeSessions(member: Member) {
 <style scoped>
 .muted {
   color: var(--muted);
+}
+
+.audit-link {
+  font-size: 0.85rem;
+  color: var(--accent);
 }
 
 .member-list {
