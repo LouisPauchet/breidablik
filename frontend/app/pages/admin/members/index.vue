@@ -32,12 +32,40 @@
           <button v-else type="button" @click="onToggleActive(member)">
             {{ member.is_active ? 'Deactivate' : 'Activate' }}
           </button>
+          <button v-if="member.is_active" type="button" @click="onStartReset(member)">
+            Reset password link
+          </button>
           <button type="button" @click="onToggleSuperuser(member)">
             {{ member.is_superuser ? 'Remove admin' : 'Make admin' }}
           </button>
         </div>
       </li>
     </ul>
+
+    <div v-if="resetTarget" class="card reset-panel">
+      <p>
+        Password reset link for <strong>{{ resetTarget.display_name }}</strong>. Nothing changes
+        until they open it and choose a new password.
+      </p>
+      <label v-if="resetTarget.is_2fa_enabled && !resetUrl" class="checkbox-row">
+        <input v-model="reset2fa" type="checkbox" />
+        Also reset their 2FA (they lost their authenticator)
+      </label>
+      <template v-if="resetUrl">
+        <p class="muted small">Valid for 24 hours and works once. Send it to them yourself:</p>
+        <div class="feed-row">
+          <input :value="resetUrl" readonly @focus="($event.target as HTMLInputElement).select()" />
+          <button type="button" @click="onCopyReset">{{ copiedReset ? 'Copied!' : 'Copy' }}</button>
+        </div>
+      </template>
+      <p v-if="resetError" class="error">{{ resetError }}</p>
+      <div class="reset-buttons">
+        <button v-if="!resetUrl" type="button" class="submit-btn" :disabled="resetLoading" @click="onGenerateReset">
+          Generate link
+        </button>
+        <button type="button" @click="onCloseReset">{{ resetUrl ? 'Done' : 'Cancel' }}</button>
+      </div>
+    </div>
 
     <h2>Invite a member</h2>
     <p class="muted small">
@@ -148,6 +176,50 @@ async function onResendInvite(member: Member) {
   })
   Object.assign(member, updated)
   await onCopyInvite(member)
+}
+
+const resetTarget = ref<Member | null>(null)
+const reset2fa = ref(false)
+const resetUrl = ref('')
+const resetError = ref('')
+const resetLoading = ref(false)
+const copiedReset = ref(false)
+
+function onStartReset(member: Member) {
+  resetTarget.value = member
+  reset2fa.value = false
+  resetUrl.value = ''
+  resetError.value = ''
+}
+
+function onCloseReset() {
+  resetTarget.value = null
+  resetUrl.value = ''
+}
+
+async function onGenerateReset() {
+  if (!resetTarget.value) return
+  resetError.value = ''
+  resetLoading.value = true
+  try {
+    const res = await $fetch<{ token: string }>(
+      `/api/admin/users/${resetTarget.value.id}/password-reset`,
+      { method: 'POST', body: { reset_2fa: reset2fa.value } },
+    )
+    resetUrl.value = `${window.location.origin}/reset-password/${res.token}`
+    await onCopyReset()
+  } catch {
+    resetError.value = 'Could not generate a link for that member.'
+  } finally {
+    resetLoading.value = false
+  }
+}
+
+async function onCopyReset() {
+  if (await copyToClipboard(resetUrl.value)) {
+    copiedReset.value = true
+    setTimeout(() => (copiedReset.value = false), 2000)
+  }
 }
 
 async function submit() {
@@ -316,6 +388,24 @@ input {
 
 .invite-result {
   margin-top: 1rem;
+}
+
+.reset-panel {
+  margin-bottom: 1.5rem;
+}
+
+.reset-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.reset-buttons button:not(.submit-btn) {
+  padding: 0.65rem 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 1rem;
 }
 
 .feed-row {
