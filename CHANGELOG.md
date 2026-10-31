@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.7.0](https://github.com/LouisPauchet/breidablik/compare/breidablik-v0.6.0...breidablik-v0.7.0) (2026-10-31)
+
+
+### Features
+
+* add admin action guards ([4805099](https://github.com/LouisPauchet/breidablik/commit/48050993fdf5f755c10f51affd6e4d1cd828c4b9))
+* add audit log model and helper ([1e3d400](https://github.com/LouisPauchet/breidablik/commit/1e3d400032fa0b46ff0eab4dbf2685f340035213))
+* add audit log page ([ff7e00f](https://github.com/LouisPauchet/breidablik/commit/ff7e00f6891ad9b882ce8e582c2969be8f1f01ad))
+* add optional Google and GitHub account linking ([4ce6a45](https://github.com/LouisPauchet/breidablik/commit/4ce6a454f17848c35999513a3a9a368394315826))
+* add passkey registration and management ([39d4b03](https://github.com/LouisPauchet/breidablik/commit/39d4b0333e3fa45be534c83049eac6bb47ad3b10))
+* add passwordless mode ([78b453e](https://github.com/LouisPauchet/breidablik/commit/78b453e78b51418bfeaaad50033feb84d3c8bdfa))
+* add public password reset page ([eb47cf1](https://github.com/LouisPauchet/breidablik/commit/eb47cf11087013dc8cc8d6723eea6eba9795750d))
+* add reset link action to the members page ([bb2d3e2](https://github.com/LouisPauchet/breidablik/commit/bb2d3e2b6a59906f9d43ddbfd54008c4bbfa3adb))
+* add user deactivation and passwordless login flags to the schema ([0f98049](https://github.com/LouisPauchet/breidablik/commit/0f98049060e4ecce6f1b7fb52a4cdf622924415c))
+* allow sign-in with a linked Google or GitHub account ([7f4f94d](https://github.com/LouisPauchet/breidablik/commit/7f4f94d6c520bc4fee5933cb2dbc5d3ea67d1135))
+* allow sign-in with a passkey ([b66c746](https://github.com/LouisPauchet/breidablik/commit/b66c7467f7a6131eddf28920a1687475f12725f6))
+* let admins deactivate and reactivate members ([fb0b48d](https://github.com/LouisPauchet/breidablik/commit/fb0b48d0cb85ce7a236d05f105e46115dc47268a))
+* let admins force logout and change roles ([474ab70](https://github.com/LouisPauchet/breidablik/commit/474ab7015193570f9537f969b96730eec2f31f49))
+* let admins generate password reset links ([781c8c3](https://github.com/LouisPauchet/breidablik/commit/781c8c34ec02caf894fdc69048dfe32fb779420c))
+* password reset links, admin tools, social login and passkeys ([5d2bc3b](https://github.com/LouisPauchet/breidablik/commit/5d2bc3b29ef59575f380e76ec0ff8ef5aced5697))
+
+
+### Documentation
+
+* document reset links, admin tools, social login and passkeys ([2a73c02](https://github.com/LouisPauchet/breidablik/commit/2a73c025b8b1192ffbb405d1e9d6f82e548dfbe7))
+
 ## [0.6.0](https://github.com/LouisPauchet/breidablik/compare/breidablik-v0.5.0...breidablik-v0.6.0) (2026-09-09)
 
 
